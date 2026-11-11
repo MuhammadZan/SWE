@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Engineer Journal
 
-## Getting Started
+A self-paced learning app for `software_engineer_roadmap.md`: four phases (architecture, performance, system design, testing & infrastructure), each with in-depth lessons, quizzes, hands-on problems, a built-in whiteboard, and GitHub repo submissions.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What's inside
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Area | Where |
+| --- | --- |
+| Lessons (markdown) | `content/phase-N/lessons/<slug>.md` |
+| Problem briefs (markdown) | `content/phase-N/problems/<slug>.md` |
+| Phase metadata, quizzes, criteria, hints | `content/phase-N/index.ts` (schema in `lib/types.ts`) |
+| Progress store (localStorage) | `lib/progress.ts` |
+| Whiteboard (Excalidraw + system-design stencils) | `components/board/` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Progress** is stored in your browser only. Use **Progress → Download backup** to save or move it (includes whiteboards).
+- **Submissions** take a public `https://github.com/owner/repo` link. The app checks the GitHub API to confirm the repo exists and is public; if GitHub is rate-limited or unreachable, the link is saved as unverified.
+- **Whiteboard**: each problem has its own board, and `/whiteboard` holds free boards. Export a PNG and commit it to your repo for design problems.
 
-## Learn More
+## Adding or editing content
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Edit the markdown files directly. To add a lesson or problem, add its entry to the phase's `index.ts` and create the matching `.md` file with the same slug.
