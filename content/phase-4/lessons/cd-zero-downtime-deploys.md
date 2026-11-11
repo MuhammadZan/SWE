@@ -8,29 +8,18 @@ Terminology: *continuous delivery* means every commit on `main` is deployable an
 
 ## The delivery flow
 
-```
-  push to main
-      |
-      v
-  CI gates (lint, typecheck, unit, integration)
-      |
-      v
-  docker build ---> tag: sha-3f9c2a1 ---> push to ghcr.io/acme/billing-api
-      |
-      v
-  deploy to STAGING (same image) ---> smoke tests ---> health OK?
-      |                                                   |
-      |                                       no: stop, alert
-      v
-  approval gate (GitHub environment "production")
-      |
-      v
-  deploy to PRODUCTION (same image, rolling/blue-green/canary)
-      |
-      v
-  post-deploy verification (health, error rate, latency)
-      |
-      +-- bad --> rollback to previous sha tag
+```mermaid
+flowchart TD
+  A([push to main]) --> B["CI gates (lint, typecheck, unit, integration)"]
+  B --> C[docker build]
+  C --> T["tag: sha-3f9c2a1"] --> P["push to ghcr.io/acme/billing-api"]
+  P --> S["deploy to STAGING (same image)"]
+  S --> SM[smoke tests] --> H{health OK?}
+  H -- no --> X["stop, alert"]
+  H -- yes --> G["approval gate (GitHub environment #quot;production#quot;)"]
+  G --> PR["deploy to PRODUCTION (same image, rolling/blue-green/canary)"]
+  PR --> V["post-deploy verification (health, error rate, latency)"]
+  V -- bad --> RB[rollback to previous sha tag]
 ```
 
 The single most important property: **the image deployed to production is byte-for-byte the image that passed tests and ran on staging.** You promote a tag; you never rebuild.
@@ -137,11 +126,10 @@ Stop old, start new. Simple, and causes downtime equal to startup time. Acceptab
 
 Replace instances one (or a few) at a time. Each new instance must pass its readiness check before the load balancer sends it traffic and before the next old instance is stopped.
 
-```
-  t0:  [v1] [v1] [v1]
-  t1:  [v2] [v1] [v1]     v2 ready -> receives traffic
-  t2:  [v2] [v2] [v1]
-  t3:  [v2] [v2] [v2]
+```mermaid
+flowchart LR
+  T0["t0: v1 v1 v1"] --> T1["t1: v2 v1 v1<br/>v2 ready, then receives traffic"]
+  T1 --> T2["t2: v2 v2 v1"] --> T3["t3: v2 v2 v2"]
 ```
 
 Default in Kubernetes, ECS, Docker Swarm and most PaaS products. Cost-efficient. Trade-off: during the rollout both versions serve traffic simultaneously, so **v1 and v2 must be compatible with the same database schema and with each other's messages.**
@@ -150,18 +138,13 @@ Default in Kubernetes, ECS, Docker Swarm and most PaaS products. Cost-efficient.
 
 Run a full copy of the new version (green) next to the old one (blue). Test green directly. Then switch the load balancer or reverse proxy to green in one step. Blue stays running for instant rollback.
 
-```
-                  +----------------+
-   users -------> | load balancer  |
-                  +----------------+
-                     |          :
-             (live)  v          : (idle, after switch: live)
-               +---------+   +---------+
-               |  BLUE   |   |  GREEN  |
-               |   v1    |   |   v2    |
-               +---------+   +---------+
-                     \         /
-                      Postgres (shared)
+```mermaid
+flowchart TD
+  U([users]) --> LB[load balancer]
+  LB -- live --> BL["BLUE<br/>v1"]
+  LB -. "idle (after switch: live)" .-> GR["GREEN<br/>v2"]
+  BL --> DB[("Postgres (shared)")]
+  GR --> DB
 ```
 
 Pros: instant cutover and instant rollback; you can smoke-test green with production config before users see it. Cons: double capacity during the deploy; the database is still shared, so schema compatibility still matters.
@@ -170,9 +153,11 @@ Pros: instant cutover and instant rollback; you can smoke-test green with produc
 
 Route a small share of traffic (say 5%) to v2, watch error rate and latency, then increase (25%, 50%, 100%) or abort.
 
-```
-   users --> LB --95%--> v1 v1 v1
-               \--5%---> v2
+```mermaid
+flowchart LR
+  U([users]) --> LB[LB]
+  LB -- "95%" --> V1["v1 v1 v1"]
+  LB -- "5%" --> V2[v2]
 ```
 
 Pros: limits the blast radius of a bad release to a few percent of users. Cons: needs weighted routing and good metrics to make the promote/abort decision; more moving parts.
@@ -244,16 +229,14 @@ Example: rename `invoices.customer_id` to `invoices.account_id`. Doing it in one
 
 Expand/contract splits it into backward-compatible steps, each its own deploy:
 
-```
- Release 1 (EXPAND)   migration: add column account_id (nullable)
-                      code writes BOTH customer_id and account_id, reads customer_id
- Backfill             UPDATE invoices SET account_id = customer_id
-                      WHERE account_id IS NULL  -- in batches of e.g. 5,000
- Release 2 (SWITCH)   migration: make account_id NOT NULL (safely, see below),
-                      and DROP NOT NULL on customer_id so it may be omitted later
-                      code reads account_id, still writes both
- Release 3 (CONTRACT) code stops writing customer_id
- Release 4 (CLEANUP)  migration: drop customer_id
+```mermaid
+flowchart TD
+  R1["Release 1 (EXPAND)<br/>migration: add column account_id (nullable)<br/>code writes BOTH customer_id and account_id, reads customer_id"]
+  BF["Backfill<br/>UPDATE invoices SET account_id = customer_id<br/>WHERE account_id IS NULL, in batches of e.g. 5,000"]
+  R2["Release 2 (SWITCH)<br/>migration: make account_id NOT NULL (safely, see below),<br/>and DROP NOT NULL on customer_id so it may be omitted later<br/>code reads account_id, still writes both"]
+  R3["Release 3 (CONTRACT)<br/>code stops writing customer_id"]
+  R4["Release 4 (CLEANUP)<br/>migration: drop customer_id"]
+  R1 --> BF --> R2 --> R3 --> R4
 ```
 
 The order of the `NOT NULL` changes matters: if `customer_id` were still `NOT NULL` when Release 3 stops writing it, every insert would fail. At every point, the currently running version and the next version both work against the schema, so any single release can be rolled back.

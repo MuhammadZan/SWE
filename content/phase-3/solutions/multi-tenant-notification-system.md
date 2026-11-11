@@ -8,21 +8,35 @@ The estimates answer the brief's key question directly: 500 emails/second is eno
 
 ### Diagram in words
 
+```mermaid
+flowchart TD
+  PS["Product services"] -- "notify()" --> IA["Ingest API"]
+  IA --> PG[("Postgres: notifications (unique tenant_id + idempotency_key)")]
+  IA --> QR{{"q:route"}}
+  QR --> R["Router (preferences cache in Redis, quiet hours, unsubscribe)"]
+  R -- "stage 1: expand recipients in batches of 500" --> CQ{{"channel queues (below)"}}
+  SC["Scheduler (every 15 min)"] -- "tenants whose local time just passed Mon 07:00" --> DJ["digest jobs"]
 ```
-Product services --notify()--> Ingest API --> Postgres: notifications (unique tenant_id + idempotency_key)
-                                    |
-                                    v
-                             [q:route] --> Router (preferences cache in Redis, quiet hours, unsubscribe)
-                                    |  stage 1: expand recipients in batches of 500
-                                    v
-       [email:security] [email:transactional] [email:digest]  [sms:security]  [slack]  [inapp]
-              |                 |                    |               |            |         |
-       dedicated pool    shared email pool (token bucket 500/s,    SMS pool   per-webhook  insert row +
-       (reserved 50/s)   split: transactional first, digest rest)             bucket 1/s   Redis pub/sub
-              \                 |                    /                            |      -> API instances
-               +-------> Email provider <-----------+                            v      -> websocket
-   every attempt -> deliveries table; 429/5xx -> backoff retry -> DLQ + alert
-Scheduler (every 15 min): tenants whose local time just passed Mon 07:00 -> digest jobs
+
+```mermaid
+flowchart TD
+  ES{{"email:security"}} --> DP["dedicated pool (reserved 50/s)"]
+  ET{{"email:transactional"}} --> SP["shared email pool (token bucket 500/s, split: transactional first, digest rest)"]
+  ED{{"email:digest"}} --> SP
+  DP --> EP["Email provider"]
+  SP --> EP
+  SS{{"sms:security"}} --> SMS["SMS pool"]
+  SL{{"slack"}} --> WB["per-webhook bucket 1/s"]
+```
+
+```mermaid
+flowchart LR
+  IN{{"inapp"}} --> IR["insert row + Redis pub/sub"]
+  IR --> AI["API instances"]
+  AI --> WS["websocket"]
+  AT["every attempt"] --> DT[("deliveries table")]
+  AT -- "429/5xx" --> BR["backoff retry"]
+  BR --> DLQ["DLQ + alert"]
 ```
 
 ### Estimations

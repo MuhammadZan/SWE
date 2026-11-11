@@ -217,14 +217,15 @@ export class PrismaUnitOfWork implements UnitOfWork {
 }
 ```
 
-```
-  IssueInvoice.execute
-        |
-        v
-  uow.run( work ) ---- BEGIN ----------------------------------+
-        |   invoices.get / inventory.save / ledger.append       |  same tx
-        |   any throw  -> ROLLBACK                              |
-        +------------- COMMIT ----------------------------------+
+```mermaid
+flowchart TD
+  E[IssueInvoice.execute] --> U["uow.run( work )"]
+  U -->|BEGIN| W
+  subgraph TX["same tx"]
+    W["invoices.get / inventory.save / ledger.append"]
+  end
+  W -->|success| C[COMMIT]
+  W -->|any throw| R[ROLLBACK]
 ```
 
 The use case still never imports Prisma. For this to compile, each Prisma repository's constructor must accept `Prisma.TransactionClient` (as `PrismaUserRepository` does above), not `PrismaClient`. Interactive transactions also have a default timeout of 5 seconds, so keep slow work such as emails and HTTP calls outside `run`. In tests, an `InMemoryUnitOfWork` simply calls `work(fakeRepos)`.

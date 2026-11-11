@@ -6,21 +6,24 @@ This is the N+1 query problem: one query to fetch a list of N items, then N more
 
 ## The anatomy of N+1
 
-```
-Request: GET /invoices?limit=50
-
-  app                                  database
-   |-- SELECT * FROM invoices LIMIT 50 -->|   1 query
-   |<----------- 50 rows -----------------|
-   |-- SELECT * FROM customers WHERE id=1 >|  \
-   |<-------------------------------------|   |
-   |-- SELECT * FROM customers WHERE id=2 >|   |  50 queries
-   |<-------------------------------------|   |  (one per invoice)
-   |   ...                                |   |
-   |-- SELECT * FROM customers WHERE id=50>|  /
-   |<-------------------------------------|
-
-  total: 51 round trips
+```mermaid
+sequenceDiagram
+  participant app
+  participant database
+  Note over app,database: Request: GET /invoices?limit=50
+  app->>database: SELECT * FROM invoices LIMIT 50
+  database-->>app: 50 rows
+  Note right of database: 1 query
+  loop 50 queries (one per invoice)
+    app->>database: SELECT * FROM customers WHERE id=1
+    database-->>app: row
+    app->>database: SELECT * FROM customers WHERE id=2
+    database-->>app: row
+    Note over app,database: ...
+    app->>database: SELECT * FROM customers WHERE id=50
+    database-->>app: row
+  end
+  Note over app,database: total: 51 round trips
 ```
 
 The cost per query is mostly not Postgres work. It is the round trip: network latency, connection-pool checkout, protocol overhead, query parsing, result serialization, and ORM hydration. At 3 ms per round trip, 51 queries cost about 150 ms of pure waiting even if each query does almost nothing. Add a second relation (billing address, line items) and it becomes 2N+1 or worse.
@@ -257,11 +260,14 @@ const resolvers = {
 };
 ```
 
-```
-tick 1:  load(c1) load(c2) load(c1) load(c3) ... (50 calls)
-         \_____________________________________/
-                         |
-end of tick:   batchFn([c1, c2, c3, ...unique ids])  ->  1 query
+```mermaid
+flowchart TD
+  subgraph tick["tick 1: 50 calls"]
+    direction LR
+    L1["load(c1)"] ~~~ L2["load(c2)"] ~~~ L3["load(c1)"] ~~~ L4["load(c3)"] ~~~ L5["..."]
+  end
+  tick -- "end of tick" --> B["batchFn([c1, c2, c3, ...unique ids])"]
+  B --> Q[("1 query")]
 ```
 
 Two rules:

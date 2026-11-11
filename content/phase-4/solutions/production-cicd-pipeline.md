@@ -8,14 +8,24 @@ What separates strong from acceptable is evidence. The README contains the curl-
 
 ### Workflow layout
 
-```
- ci.yml (pull_request, push to main)       permissions: contents: read
-   quality (format, lint, typecheck) | unit | integration (pg 16 service)
-   docker-build (needs all three, no push)
- release.yml (push to main)
-   gates (reusable ci via workflow_call) -> image -> staging -> production
- rollback.yml (workflow_dispatch, input: tag, environment: production)
- scripts/deploy.sh <env> <tag>   shared by release and rollback
+```mermaid
+flowchart TD
+  subgraph CIY["ci.yml (pull_request, push to main), permissions: contents: read"]
+    Q["quality (format, lint, typecheck)"]
+    U[unit]
+    I["integration (pg 16 service)"]
+    DBD["docker-build (no push)"]
+    Q & U & I -- needs all three --> DBD
+  end
+  subgraph RELY["release.yml (push to main)"]
+    G["gates (reusable ci via workflow_call)"] --> IM[image] --> ST[staging] --> PR[production]
+  end
+  G -. workflow_call .-> CIY
+  RB["rollback.yml (workflow_dispatch, input: tag, environment: production)"]
+  SH["scripts/deploy.sh #lt;env#gt; #lt;tag#gt;<br/>shared by release and rollback"]
+  ST --> SH
+  PR --> SH
+  RB --> SH
 ```
 
 Calling `ci.yml` from `release.yml` (`on: workflow_call`) means the gates are defined once and an image is never pushed from untested code.

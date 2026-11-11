@@ -666,7 +666,7 @@ export const phase: PhaseMeta = {
         "DESIGN.md with context, threat model, components, flows, data model, failure modes and trade-offs",
         "Exported architecture diagram (PNG or SVG) with trust boundaries marked",
         "SQL schema for users, tenants, memberships, roles, permissions and identity links, plus example RLS policies",
-        "Sequence diagrams (Mermaid or ASCII) for SSO login, tenant switch and a service-to-service call",
+        "Mermaid sequence diagrams for SSO login, tenant switch and a service-to-service call",
         "At least one ADR for the most contested decision (for example sessions vs JWT, or RLS)",
       ],
       relatedLessons: ["authentication-authorization", "application-security", "api-design"],

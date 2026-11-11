@@ -18,18 +18,16 @@ The key word is *real*. SQLite is not Postgres. It uses dynamic typing (unless y
 
 ## The test pyramid and the testing trophy
 
-```
-     Test pyramid (Cohn)              Testing trophy (Dodds)
-
-           /\                                 ___
-          /E2E\                              |E2E|
-         /------\                         ___|___|___
-        /  Integ \                       |Integration|  <- most effort here
-       /----------\                      |___________|
-      /    Unit    \                        | Unit |
-     /--------------\                       |______|
-                                          __|Static|__
-                                         |_types/lint_|
+```mermaid
+flowchart LR
+  subgraph PYR["Test pyramid (Cohn)"]
+    direction TB
+    PE["E2E (fewest)"] --- PI[Integration] --- PU["Unit (most, widest layer)"]
+  end
+  subgraph TRO["Testing trophy (Dodds)"]
+    direction TB
+    TE[E2E] --- TI["Integration (widest layer: most effort here)"] --- TU[Unit] --- TS["Static (types/lint)"]
+  end
 ```
 
 The pyramid says: many fast unit tests, fewer integration tests, very few end-to-end tests, because higher levels are slower and flakier. The trophy argues that for typical web apps, integration tests give the best confidence per minute of effort, and that static analysis (TypeScript, ESLint) is the cheapest layer of all.
@@ -297,15 +295,19 @@ Here the route uses a pool, not a single transaction, so isolate by creating a f
 
 ## What to replace and what to keep real
 
-```
-  +-----------------------------------------------------+
-  |  Your process                                       |
-  |   HTTP route -> service -> repository -> pg driver  |---> REAL Postgres (container)
-  |                    |                                |
-  |                    +-> StripeClient   (fake/stub)   |-x-> no real network
-  |                    +-> TaxApiClient   (stub)        |-x->
-  |                    +-> Mailer         (spy)         |-x->
-  +-----------------------------------------------------+
+```mermaid
+flowchart LR
+  subgraph PROC["Your process"]
+    direction LR
+    R[HTTP route] --> S[service] --> RP[repository] --> D[pg driver]
+    S --> ST["StripeClient (fake/stub)"]
+    S --> TX["TaxApiClient (stub)"]
+    S --> M["Mailer (spy)"]
+  end
+  D --> PG[("REAL Postgres (container)")]
+  ST -. blocked .-> N(["no real network"])
+  TX -. blocked .-> N
+  M -. blocked .-> N
 ```
 
 Keep real anything you own and deploy alongside your app (database, Redis, queue). Replace third-party APIs you cannot control; test those contracts separately with recorded responses or the provider's sandbox in a dedicated, non-blocking job.

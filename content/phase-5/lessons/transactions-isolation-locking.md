@@ -45,33 +45,44 @@ Set it per transaction: `BEGIN ISOLATION LEVEL SERIALIZABLE;`. Read Committed ta
 
 ### Non-repeatable read and phantoms (Read Committed)
 
-```
-time  Session A (read committed)               Session B
-t1    BEGIN;
-t2    SELECT sum(total_cents) FROM invoices
-        WHERE tenant_id=1;            -> 10000
-t3                                              INSERT INTO invoices (... 500);
-t4                                              COMMIT;
-t5    SELECT count(*), sum(total_cents) ...
-                                      -> 10500  (a phantom row appeared)
-t6    COMMIT;
+```mermaid
+sequenceDiagram
+  participant A as Session A (read committed)
+  participant DB as Postgres
+  participant B as Session B
+  A->>DB: t1 BEGIN#59;
+  A->>DB: t2 SELECT sum(total_cents) FROM invoices WHERE tenant_id=1#59;
+  DB-->>A: 10000
+  B->>DB: t3 INSERT INTO invoices (... 500)#59;
+  B->>DB: t4 COMMIT#59;
+  A->>DB: t5 SELECT count(*), sum(total_cents) ...
+  DB-->>A: 10500
+  Note over A,DB: a phantom row appeared
+  A->>DB: t6 COMMIT#59;
 ```
 
 A report that runs a header query and a detail query in the same transaction can produce totals that do not match its lines. Fix: run the report at `REPEATABLE READ` (or `READ ONLY DEFERRABLE` serializable for long reports), so every statement sees the same snapshot.
 
 ### Lost update
 
-```
-time  Session A                                 Session B
-t1    BEGIN;                                    BEGIN;
-t2    SELECT on_hand FROM stock WHERE id=1; -> 10
-t3                                              SELECT on_hand ... -> 10
-t4    -- app computes 10 - 3
-      UPDATE stock SET on_hand = 7 WHERE id=1;
-t5    COMMIT;
-t6                                              -- app computes 10 - 4
-                                                UPDATE stock SET on_hand = 6 ...;
-t7                                              COMMIT;    -- A's decrement is lost
+```mermaid
+sequenceDiagram
+  participant A as Session A
+  participant DB as Postgres
+  participant B as Session B
+  A->>DB: t1 BEGIN#59;
+  B->>DB: t1 BEGIN#59;
+  A->>DB: t2 SELECT on_hand FROM stock WHERE id=1#59;
+  DB-->>A: 10
+  B->>DB: t3 SELECT on_hand ...
+  DB-->>B: 10
+  Note over A: t4 app computes 10 - 3
+  A->>DB: t4 UPDATE stock SET on_hand = 7 WHERE id=1#59;
+  A->>DB: t5 COMMIT#59;
+  Note over B: t6 app computes 10 - 4
+  B->>DB: t6 UPDATE stock SET on_hand = 6 ...#59;
+  B->>DB: t7 COMMIT#59;
+  Note over A,B: A's decrement is lost
 ```
 
 Under Read Committed, B's UPDATE writes the absolute value 6 it computed from a stale read, silently overwriting A's 7. (Had A still been open at t6, B would wait for A's row lock, then overwrite anyway.) Under Repeatable Read, B's UPDATE fails at t6 with `could not serialize access due to concurrent update` (SQLSTATE `40001`) because the row changed after B's snapshot.
@@ -82,18 +93,23 @@ Fixes, best first: an atomic `UPDATE stock SET on_hand = on_hand - 4 WHERE id = 
 
 The hardest one. Two transactions read an **overlapping set**, then write **different rows**, each preserving the invariant alone but violating it together.
 
-```
--- invariant: at least one doctor on call per shift
-time  Session A (repeatable read)               Session B (repeatable read)
-t1    BEGIN ISOLATION LEVEL REPEATABLE READ;    BEGIN ISOLATION LEVEL REPEATABLE READ;
-t2    SELECT count(*) FROM on_call
-        WHERE shift_id=9 AND active; -> 2
-t3                                              SELECT count(*) ... -> 2
-t4    UPDATE on_call SET active=false
-        WHERE shift_id=9 AND doctor='alice';
-t5                                              UPDATE on_call SET active=false
-                                                  WHERE shift_id=9 AND doctor='bob';
-t6    COMMIT;                                   COMMIT;   -- 0 doctors on call
+```mermaid
+sequenceDiagram
+  participant A as Session A (repeatable read)
+  participant DB as Postgres
+  participant B as Session B (repeatable read)
+  Note over A,B: invariant: at least one doctor on call per shift
+  A->>DB: t1 BEGIN ISOLATION LEVEL REPEATABLE READ#59;
+  B->>DB: t1 BEGIN ISOLATION LEVEL REPEATABLE READ#59;
+  A->>DB: t2 SELECT count(*) FROM on_call WHERE shift_id=9 AND active#59;
+  DB-->>A: 2
+  B->>DB: t3 SELECT count(*) ...
+  DB-->>B: 2
+  A->>DB: t4 UPDATE on_call SET active=false WHERE shift_id=9 AND doctor='alice'#59;
+  B->>DB: t5 UPDATE on_call SET active=false WHERE shift_id=9 AND doctor='bob'#59;
+  A->>DB: t6 COMMIT#59;
+  B->>DB: t6 COMMIT#59;
+  Note over A,B: 0 doctors on call
 ```
 
 No row was written twice, so row locks never collide and Repeatable Read happily commits both. Same shape: two managers approving expenses against one budget (each inserts a new row, sum checked in the read), two users claiming the last unique username via a "check then insert" without a unique constraint, double-booking without an exclusion constraint.
@@ -156,13 +172,18 @@ Prefer the `_xact_` variants: they release at transaction end. Session-level `pg
 
 ## Deadlocks
 
-```
-time  Session A                         Session B
-t1    UPDATE stock SET ... WHERE id=1;
-t2                                      UPDATE stock SET ... WHERE id=2;
-t3    UPDATE stock ... WHERE id=2;  (waits for B)
-t4                                      UPDATE stock ... WHERE id=1;  (waits for A)
-      -> after deadlock_timeout (1s default) Postgres aborts one: SQLSTATE 40P01
+```mermaid
+sequenceDiagram
+  participant A as Session A
+  participant DB as Postgres
+  participant B as Session B
+  A->>DB: t1 UPDATE stock SET ... WHERE id=1#59;
+  B->>DB: t2 UPDATE stock SET ... WHERE id=2#59;
+  A->>DB: t3 UPDATE stock ... WHERE id=2#59;
+  Note over A,DB: waits for B
+  B->>DB: t4 UPDATE stock ... WHERE id=1#59;
+  Note over DB,B: waits for A
+  Note over A,B: after deadlock_timeout (1s default) Postgres aborts one: SQLSTATE 40P01
 ```
 
 Real-world trigger: two orders with the same products in different line order, each decrementing stock line by line. Prevention:

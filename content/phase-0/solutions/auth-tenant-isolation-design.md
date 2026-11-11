@@ -10,21 +10,16 @@ Finally, the writing argues trade-offs for this ERP: an accountant who belongs t
 
 ### Diagram in words
 
-```
- Browser ──HTTPS──> Edge/LB ──> web-api ───────────────┐
-    │                              │  1. session lookup (Redis)
-    │  OIDC code+PKCE              │  2. membership + role (cache, 60s TTL,
-    ▼                              │     evicted on change)
- Tenant IdP (Entra/Okta)           │  3. use case: can(principal, action, resource)
-    │  ID token (iss, sub)         │  4. repo: tenantId required
-    └────────> /auth/callback      │  5. BEGIN; set_config('app.tenant_id', $1, true)
-                                   ▼
-                 PgBouncer (txn mode) ──> Postgres (RLS FORCE, app role NOBYPASSRLS)
-                                   ▲
- web-api ──job {tenantId, actorId, jobId}──> Queue ──> worker
-            signed with service key           │ verifies signature + audience
-                                              │ sets tenant per transaction
- web-api ──JWT(aud=reporting, 5 min, tenant, sub)──> reporting ──> read replica (RLS)
+```mermaid
+flowchart TD
+  B([Browser]) -->|HTTPS| LB[Edge/LB] --> API[web-api]
+  B -->|"OIDC code+PKCE"| IDP["Tenant IdP (Entra/Okta)"]
+  IDP -->|"ID token (iss, sub) to /auth/callback"| API
+  API -.- STEPS["1. session lookup (Redis)<br/>2. membership + role (cache, 60s TTL, evicted on change)<br/>3. use case: can(principal, action, resource)<br/>4. repo: tenantId required<br/>5. BEGIN; set_config('app.tenant_id', $1, true)"]
+  API --> PGB["PgBouncer (txn mode)"] --> PG[("Postgres (RLS FORCE, app role NOBYPASSRLS)")]
+  API -->|"job {tenantId, actorId, jobId}<br/>signed with service key"| Q{{Queue}} --> W["worker<br/>verifies signature + audience<br/>sets tenant per transaction"]
+  W --> PGB
+  API -->|"JWT(aud=reporting, 5 min, tenant, sub)"| R[reporting] --> RR[("read replica (RLS)")]
 ```
 
 The trust boundaries are browser to edge, the IdP callback, service to service, and app to database. Authorization decisions are made in the use cases of `web-api` and `reporting`. The database enforces tenant scope through RLS but makes no role decisions.

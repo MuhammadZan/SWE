@@ -135,16 +135,12 @@ export const container = {
 };
 ```
 
-```
-                 +----------------------------+
-                 |  main/container.ts         |   knows everything,
-                 |  (composition root)        |   contains no business logic
-                 +-------------+--------------+
-                               | new + wire
-        +----------------------+-----------------------+
-        v                      v                       v
-  PrismaInventoryRepo     SlackNotifier          RecordShipment(...)
-  (infrastructure)        (infrastructure)       (application: knows only ports)
+```mermaid
+flowchart TD
+  CR["main/container.ts (composition root)<br/>knows everything, contains no business logic"]
+  CR -->|new + wire| P["PrismaInventoryRepo<br/>(infrastructure)"]
+  CR -->|new + wire| S["SlackNotifier<br/>(infrastructure)"]
+  CR -->|new + wire| R["RecordShipment(...)<br/>(application: knows only ports)"]
 ```
 
 Rules for the composition root:

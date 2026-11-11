@@ -25,13 +25,13 @@ Strategy, in order:
 
 Numbers after: with an ~80% cache hit rate, 160 tile requests/s become about 32 queries/s at ~4 ms: 0.13 busy connections, well under one core. Writes return to about 8 ms because CPU is no longer saturated. Backfill summary tables per tenant, verify with reconciliation queries, then switch tiles behind a feature flag.
 
-```
- Browser --> API --+--> Redis (tile cache, 60s) 
-                   +--> PgBouncer --> Primary  (OLTP + overdue tile, partial index)
-                   |                     |  outbox
-                   |                     v
-                   |               projector worker --> summary tables (on primary)
-                   +--> PgBouncer --> Replica   (reports, other reads; LSN check)
+```mermaid
+flowchart LR
+  BR([Browser]) --> API[API]
+  API --> RD[("Redis (tile cache, 60s)")]
+  API --> PB1[PgBouncer] --> PRI[("Primary<br/>OLTP + overdue tile, partial index")]
+  PRI -- outbox --> PW[projector worker] --> SUM[("summary tables (on primary)")]
+  API --> PB2[PgBouncer] --> REP[("Replica<br/>reports, other reads, LSN check")]
 ```
 
 Not doing: materialized views (a full refresh over 600 million lines exceeds the freshness window) or an OLAP store (overkill for 8 known tiles).
@@ -48,12 +48,11 @@ Strategy:
 4. **Rollups** `throughput_hourly (tenant_id, warehouse_id, hour)` upserted per batch for the charts.
 5. **Raw history to a columnar store or object storage**: the same queue feeds ClickHouse (or Parquet in S3 queried by Athena/DuckDB). Compression of 8 to 15x on this kind of data puts 13 months at roughly 4 to 6 TB, on cheap storage, for the audit requirement.
 
-```
- Scanners --> API --> queue (partitioned by warehouse) --+--> ingest workers --COPY--> Postgres
-                                                         |      scan_events (daily partitions, 14d)
-                                                         |      pallet_location (upsert latest)
-                                                         |      throughput_hourly (upsert)
-                                                         +--> ClickHouse / S3 Parquet (13 months raw)
+```mermaid
+flowchart LR
+  SC([Scanners]) --> API[API] --> Q[/"queue (partitioned by warehouse)"/]
+  Q --> IW[ingest workers] -- COPY --> PG[("Postgres<br/>scan_events (daily partitions, 14d)<br/>pallet_location (upsert latest)<br/>throughput_hourly (upsert)")]
+  Q --> CH[("ClickHouse / S3 Parquet (13 months raw)")]
 ```
 
 Migration: create the partitioned table alongside, dual write, backfill 14 days, switch readers, export the old 1.4 TB table to Parquet, drop it. Success criteria: sustain 12,000 events/s for 10 minutes with standby replay lag under 5 s and pallet lookup freshness under 1 s.

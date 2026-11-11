@@ -8,21 +8,22 @@ Continuous integration (CI) makes verification non-optional and identical for ev
 
 Workflows are YAML files in `.github/workflows/`. The hierarchy:
 
-```
-  Workflow (.github/workflows/ci.yml)
-    triggered by events: push, pull_request, schedule, workflow_dispatch
-    |
-    +-- Job: lint        (runs on its own fresh VM)
-    |     +-- step: checkout
-    |     +-- step: setup-node
-    |     +-- step: npm ci
-    |     +-- step: npm run lint
-    |
-    +-- Job: test        (parallel with lint by default)
-    |     +-- steps...
-    |
-    +-- Job: build       (needs: [lint, test]  -> waits for both)
-          +-- steps...
+```mermaid
+flowchart TD
+  W["Workflow (.github/workflows/ci.yml)<br/>triggered by events: push, pull_request, schedule, workflow_dispatch"]
+  subgraph JL["Job: lint (runs on its own fresh VM)"]
+    L1["step: checkout"] --> L2["step: setup-node"] --> L3["step: npm ci"] --> L4["step: npm run lint"]
+  end
+  subgraph JT["Job: test (parallel with lint by default)"]
+    T1[steps...]
+  end
+  subgraph JB["Job: build (needs: [lint, test])"]
+    B1[steps...]
+  end
+  W --> JL
+  W --> JT
+  JL -- "waits for both" --> JB
+  JT -- "waits for both" --> JB
 ```
 
 - **Workflow**: one YAML file, triggered by one or more events.
@@ -221,16 +222,13 @@ CI that can be ignored is a suggestion. Make it mandatory:
 4. Require branches to be up to date before merging (or use a merge queue).
 5. Block force pushes and deletions.
 
-```
-   feature branch --push--> PR opened
-                              |
-                     CI: quality | unit | integration
-                              |
-                 all green + 1 review approved?
-                     |                     |
-                    no                    yes
-                     |                     |
-                merge blocked        merge to main --> CD workflow
+```mermaid
+flowchart TD
+  FB([feature branch]) -- push --> PR[PR opened]
+  PR --> CI["CI: quality | unit | integration"]
+  CI --> D{"all green + 1 review approved?"}
+  D -- no --> BL[merge blocked]
+  D -- yes --> M[merge to main] --> CD[CD workflow]
 ```
 
 The name you select is the job's `name:` (or its id if no name). If you rename a job, update the rule, or the PR waits forever for a check that will never report.

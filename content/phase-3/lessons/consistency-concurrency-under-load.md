@@ -23,15 +23,22 @@ async function reserveSeat(eventId: string, userId: string) {
 
 Timeline with one seat left:
 
-```
-time   Request A                       Request B
- t1    SELECT seats_left -> 1
- t2                                    SELECT seats_left -> 1
- t3    1 > 0, OK
- t4                                    1 > 0, OK
- t5    UPDATE seats_left = 0
- t6                                    UPDATE seats_left = -1
- t7    INSERT reservation              INSERT reservation    <- oversold
+```mermaid
+sequenceDiagram
+  participant A as Request A
+  participant DB as Database
+  participant B as Request B
+  A->>DB: t1: SELECT seats_left
+  DB-->>A: 1
+  B->>DB: t2: SELECT seats_left
+  DB-->>B: 1
+  Note over A: t3: 1 #gt; 0, OK
+  Note over B: t4: 1 #gt; 0, OK
+  A->>DB: t5: UPDATE seats_left = 0
+  B->>DB: t6: UPDATE seats_left = -1
+  A->>DB: t7: INSERT reservation
+  B->>DB: t7: INSERT reservation
+  Note over A,B: oversold
 ```
 
 The gap between the check (t1) and the act (t5) is called a **TOCTOU** window (time of check to time of use). Every fix below either removes the gap or makes the second request notice that something changed during it.

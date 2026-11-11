@@ -22,15 +22,22 @@ Sequential scans are not evil. For small tables, or queries that return a large 
 
 The default Postgres index is a **B-tree**: a balanced, sorted, wide tree. Each node is a page that holds hundreds of keys, so the tree is very shallow. Three or four levels can cover hundreds of millions of rows.
 
-```
-                         [ root:  c_200 | c_500 | c_800 ]
-                         /           |          |        \
-        [ c_001 .. c_199 ]   [ c_200 .. c_499 ]   ...   [ c_800 .. c_999 ]
-               |                     |
-   leaf: (c_041, tid) (c_042, tid) (c_042, tid) (c_043, tid) ... --> next leaf
-                    |            |
-                    v            v
-              heap page 812   heap page 3051    (actual rows)
+```mermaid
+flowchart TD
+  root["root: c_200 | c_500 | c_800"]
+  root --> n1["c_001 .. c_199"]
+  root --> n2["c_200 .. c_499"]
+  root --> n3["..."]
+  root --> n4["c_800 .. c_999"]
+  n1 --> leaf["leaf: (c_041, tid) (c_042, tid) (c_042, tid) (c_043, tid) ..."]
+  n2 --> next["next leaf"]
+  leaf -- "next leaf" --> next
+  subgraph heap["heap (actual rows)"]
+    h1[("heap page 812")]
+    h2[("heap page 3051")]
+  end
+  leaf -- "tid" --> h1
+  leaf -- "tid" --> h2
 ```
 
 Key properties:

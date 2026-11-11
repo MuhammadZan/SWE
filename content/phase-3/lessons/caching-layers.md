@@ -12,9 +12,14 @@ A cache is a copy of data stored somewhere faster or closer than the source of t
 
 Caches exist at many layers:
 
-```
-Browser cache -> CDN edge -> Reverse proxy -> App memory -> Redis -> Database buffer cache -> Disk
-  (closest to user, least control)                                (closest to data, most control)
+```mermaid
+flowchart TD
+  A["Browser cache (closest to user, least control)"] --> B["CDN edge"]
+  B --> C["Reverse proxy"]
+  C --> D["App memory"]
+  D --> E["Redis"]
+  E --> F["Database buffer cache"]
+  F --> G[("Disk (closest to data, most control)")]
 ```
 
 Two numbers define how useful a cache is:
@@ -28,14 +33,24 @@ Two numbers define how useful a cache is:
 
 The application owns the logic. On read: check cache, on miss load from DB and populate the cache. On write: update DB, then delete the cache key.
 
-```
-Read:   App --GET--> Redis  (hit? return)
-         |  miss
-         v
-        Postgres --> App --SET with TTL--> Redis --> return
-
-Write:  App --UPDATE--> Postgres
-        App --DEL key--> Redis
+```mermaid
+sequenceDiagram
+  participant App
+  participant Redis
+  participant Postgres
+  Note over App,Postgres: Read
+  App->>Redis: GET
+  alt hit
+    Redis-->>App: value, return
+  else miss
+    App->>Postgres: query
+    Postgres-->>App: row
+    App->>Redis: SET with TTL
+    Note over App: return
+  end
+  Note over App,Postgres: Write
+  App->>Postgres: UPDATE
+  App->>Redis: DEL key
 ```
 
 ```ts
@@ -131,12 +146,23 @@ Old keys are never read again and expire through their TTL. One INCR invalidates
 
 Your dashboard key expires at 09:00:00. In the next 300 ms (the time it takes to recompute) 800 requests arrive. All 800 miss. All 800 run the 300 ms aggregate query at the same time. Postgres falls over, queries slow to 10 s, more requests pile up. This is a **cache stampede**, and it often happens exactly when traffic is highest, because that is when popular keys are being read.
 
-```
-t=0     key expires
-t=0..300ms   req1 miss -> DB
-             req2 miss -> DB
-             ...
-             req800 miss -> DB   <- 800 identical expensive queries
+```mermaid
+sequenceDiagram
+  participant R1 as req1
+  participant R2 as req2
+  participant RN as req800
+  participant Cache
+  participant DB
+  Note over Cache: t=0: key expires
+  Note over R1,DB: t=0..300ms
+  R1->>Cache: GET (miss)
+  R1->>DB: query
+  R2->>Cache: GET (miss)
+  R2->>DB: query
+  Note over R2,RN: ...
+  RN->>Cache: GET (miss)
+  RN->>DB: query
+  Note over DB: 800 identical expensive queries
 ```
 
 Three fixes, often combined:

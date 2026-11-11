@@ -99,13 +99,11 @@ HOT updates (heap-only tuples) reduce bloat on indexes: if an update changes no 
 
 Transaction IDs are 32-bit, so about 4 billion values that wrap around; visibility comparisons work within a window of about 2 billion. To keep old rows visible forever, vacuum **freezes** them, marking them as older than every transaction. If the oldest unfrozen XID in a database approaches 2 billion transactions old, Postgres first warns, then stops assigning new transaction IDs: the database goes read-only until a manual vacuum completes, which on a large table can take hours.
 
-```
-age(datfrozenxid):
-0 ............ 200M ...................... 1.6B ............ ~2B
-               |                            |                 |
-   autovacuum_freeze_max_age:      vacuum_failsafe_age:   writes stop
-   anti-wraparound vacuum          vacuum skips throttling (PG14+)
-   is forced on the table
+```mermaid
+flowchart LR
+  Z["age(datfrozenxid) = 0"] --> A["200M<br/>autovacuum_freeze_max_age:<br/>anti-wraparound vacuum is forced on the table"]
+  A --> B["1.6B<br/>vacuum_failsafe_age:<br/>vacuum skips throttling (PG14+)"]
+  B --> C["~2B<br/>writes stop"]
 ```
 
 Anti-wraparound autovacuums run even when autovacuum is disabled for a table and cannot be skipped. They also do not give way to lock requests like normal autovacuum does, so a migration can end up queued behind one.

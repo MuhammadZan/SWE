@@ -30,10 +30,28 @@ Slugs are kebab-case and globally unique across all phases. Use plain strings in
 - No `$...$` LaTeX. Write `O(n log n)` in inline code or plain text.
 - A line starting with `## ` inside a fenced code block is fine (the app ignores it for the table of contents), but avoid it when easy.
 
+## Diagrams: use Mermaid
+
+The app renders fenced ```mermaid blocks as diagrams (theme-aware, light and dark). Use them for anything with boxes and arrows:
+
+- Architecture, request flow, layers, dependencies: `flowchart LR` / `flowchart TD`, with `subgraph` for boundaries (layers, VPCs, regions). Shapes: `[(Postgres)]` for databases, `{{Queue}}` or `[/Queue/]` for queues, `([Client])` for users and clients, `{Decision?}` for decisions.
+- Two or more actors over time (two DB sessions, client/server/worker, a webhook retry): `sequenceDiagram`, with `Note over A,B:` for commentary, `rect`/`alt`/`loop` blocks where useful.
+- Lifecycles (invoice status, job states, deploy states): `stateDiagram-v2`.
+- Schemas and table relationships: `erDiagram`.
+- Rollout and migration timelines: `gantt` only when the time axis matters; otherwise a flowchart.
+- Branch strategies: `gitGraph`.
+
+Rules:
+- Quote labels that contain punctuation, parentheses, slashes, colons or `<>`: `A["API (Node, stateless)"]`. Write `#lt;` and `#gt;` for angle brackets, and `#quot;` for double quotes inside labels.
+- Keep diagrams small enough to read at 700px wide: about 12 nodes at most. Split larger ones.
+- No hard-coded colors or `%%{init}%%` theme overrides. The app themes diagrams. A `classDef` for one emphasized class is fine if it uses `stroke-width` or `stroke-dasharray` only.
+- Keep plain text blocks (no language or `text`) for things that are really text: EXPLAIN output, terminal output, logs, file trees, byte or page layouts, tables of numbers.
+- Every diagram must parse. Run `node scripts/validate-mermaid.mjs <files>` (no args checks all of `content/`).
+
 ## Lessons (1500–2500 words)
 
 1. `## Why this matters`: a real pain point.
-2. Concept sections with multiple code examples (bad → better), ASCII diagrams where they help, and tables for comparisons.
+2. Concept sections with multiple code examples (bad → better), Mermaid diagrams where they help, and tables for comparisons.
 3. `## Common mistakes`
 4. `## In the real world`: how it shows up in production codebases and in interviews.
 5. `## Try it`: a short hands-on practice.
@@ -60,7 +78,7 @@ Every problem that involves code must require automated tests for its core logic
 These unlock after the learner submits. They exist because nobody else reviews the learner's work, so they must help the learner grade themselves honestly. Use these sections:
 
 1. `## What a strong solution looks like`: the shape of a senior-quality answer, in prose.
-2. `## Reference approach`: the key design decisions with focused code, SQL or config excerpts. These are the essential parts, not a whole project. For design problems, describe the reference diagram in words or ASCII and give the reasoning plus back-of-envelope numbers.
+2. `## Reference approach`: the key design decisions with focused code, SQL or config excerpts. These are the essential parts, not a whole project. For design problems, include the reference diagram as Mermaid and give the reasoning plus back-of-envelope numbers.
 3. `## Common mistakes`: what weaker submissions get wrong, and why it matters.
 4. `## Trade-offs worth discussing`: what an interviewer or tech lead would probe.
 5. `## Grade yourself`: a table with three columns (Strong / Acceptable / Needs work) and 4–6 rows, one per key dimension. Each cell is concrete and observable in a repo.
@@ -69,4 +87,5 @@ These unlock after the learner submits. They exist because nobody else reviews t
 ## Before you finish
 
 - Run `cd /Users/pebi/Projects/software-engineer-journel && npx tsc --noEmit 2>&1 | grep content/` and fix any errors in your files.
+- Run `node scripts/validate-mermaid.mjs` and fix any failing diagram in your files.
 - Check that every slug has its `.md` file(s) and that every `relatedLessons` slug exists.

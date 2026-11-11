@@ -50,16 +50,13 @@ Policy is your product. Details are tools you happen to be using right now. A go
 
 The names differ between authors, but most production backends end up with these four layers:
 
-```
-+--------------------------------------------------------------+
-|  Interface / Presentation   (HTTP routes, GraphQL, CLI, jobs) |
-+--------------------------------------------------------------+
-|  Application / Use cases    (CreateInvoice, ReceiveStock)     |
-+--------------------------------------------------------------+
-|  Domain                     (Invoice, Money, StockLevel rules)|
-+--------------------------------------------------------------+
-|  Infrastructure             (Prisma repos, Stripe, Postmark)  |
-+--------------------------------------------------------------+
+```mermaid
+flowchart TD
+  I["Interface / Presentation<br/>(HTTP routes, GraphQL, CLI, jobs)"]
+  A["Application / Use cases<br/>(CreateInvoice, ReceiveStock)"]
+  D["Domain<br/>(Invoice, Money, StockLevel rules)"]
+  F["Infrastructure<br/>(Prisma repos, Stripe, Postmark)"]
+  I ~~~ A ~~~ D ~~~ F
 ```
 
 | Layer | Responsibility | Knows about | Must NOT know about |
@@ -176,26 +173,23 @@ This is the single most important sentence in the lesson:
 
 > **Source code dependencies point inward, toward policy. Inner layers never import from outer layers.**
 
-```
-        +-------------------------------------------+
-        |  Infrastructure / Interface (outer)        |
-        |   +-----------------------------------+   |
-        |   |  Application (use cases + ports)  |   |
-        |   |   +---------------------------+   |   |
-        |   |   |   Domain (entities, rules) |   |   |
-        |   |   +---------------------------+   |   |
-        |   +-----------------------------------+   |
-        +-------------------------------------------+
-              arrows of "import" point INWARD only
+```mermaid
+flowchart TB
+  subgraph RULE["arrows of #quot;import#quot; point INWARD only"]
+    subgraph OUTER["Infrastructure / Interface (outer)"]
+      subgraph APP["Application (use cases + ports)"]
+        DOM["Domain (entities, rules)"]
+      end
+    end
+  end
 ```
 
 So how does a use case save to Postgres if it can't import Prisma? Through **dependency inversion**. The application layer declares the `InvoiceRepository` interface. The infrastructure layer implements it. At startup, a *composition root* wires the concrete implementation into the use case.
 
-```
-  CreateInvoice ----uses----> InvoiceRepository (interface, in application/)
-                                      ^
-                                      | implements
-                         PrismaInvoiceRepository (in infrastructure/)
+```mermaid
+flowchart LR
+  CI[CreateInvoice] -->|uses| IR["InvoiceRepository<br/>(interface, in application/)"]
+  PR["PrismaInvoiceRepository<br/>(in infrastructure/)"] -->|implements| IR
 ```
 
 At runtime, control flows outward (use case -> Prisma -> DB). At compile time, the import arrow points inward (Prisma repo -> interface). That reversal is the whole trick, and it is why this style is also called *ports and adapters* or *hexagonal* architecture.

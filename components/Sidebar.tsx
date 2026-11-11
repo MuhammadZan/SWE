@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { initStore, syncStatus } from "@/lib/store";
 import type { Catalog } from "@/lib/catalog";
 import { courseStats, phaseStats, useHydrated, useProgress } from "@/lib/progress";
 import { ProgressRing } from "./ProgressRing";
@@ -26,6 +27,11 @@ export function Sidebar({ catalog }: { catalog: Catalog }) {
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
   }, [open]);
+
+  useEffect(() => {
+    void initStore();
+  }, []);
+  const sync = useSyncExternalStore(syncStatus.subscribe, syncStatus.get, () => "loading" as const);
 
   const activePhase = catalog.find(
     (p) =>
@@ -119,6 +125,17 @@ export function Sidebar({ catalog }: { catalog: Catalog }) {
             </div>
           );
         })}
+      </div>
+      <div className="flex items-center gap-2 border-t border-border px-5 py-3 text-[0.7rem] text-subtle" role="status">
+        <span
+          className={`size-1.5 rounded-full ${
+            sync === "synced" ? "bg-ok" : sync === "offline" ? "bg-warn" : "animate-pulse bg-subtle"
+          }`}
+        />
+        {sync === "synced" && "Saved to disk"}
+        {sync === "saving" && "Saving…"}
+        {sync === "loading" && "Loading progress…"}
+        {sync === "offline" && "Server unreachable: kept in browser, will retry"}
       </div>
     </nav>
   );

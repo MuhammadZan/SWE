@@ -25,12 +25,15 @@ Arrays are the right choice when you care about **order** or **position**: line 
 
 A hash map stores key-value pairs. It runs the key through a hash function to compute a bucket location, so finding a key does not require scanning.
 
-```
-key "SKU-1042" --hash()--> 7 ---------+
-                                      v
-buckets: [0][1][2][3][4][5][6][7][8][9]...
-                              |
-                              +--> { sku: "SKU-1042", name: "Bolt M8", ... }
+```mermaid
+flowchart LR
+  K["key #quot;SKU-1042#quot;"] -- "hash()" --> I["7"]
+  subgraph buckets["buckets: [0][1][2][3][4][5][6][7][8][9]..."]
+    direction LR
+    B0["[0] .. [6]"] ~~~ B7["[7]"] ~~~ B8["[8][9]..."]
+  end
+  I --> B7
+  B7 --> R["{ sku: #quot;SKU-1042#quot;, name: #quot;Bolt M8#quot;, ... }"]
 ```
 
 | Operation | Average cost |

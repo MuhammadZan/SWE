@@ -6,32 +6,23 @@ The write-up treats sync and async deliberately. Calls that must succeed in the 
 
 ## Reference approach
 
-A reference layout (arrows are compile-time dependencies; `~~>` is an async event):
+A reference layout (arrows are compile-time dependencies; dotted arrows are async events):
 
-```
-                 +-----------+    +-----------+
-                 |   Sales   |    | Purchasing|
-                 +-----+-----+    +-----+-----+
-       reserve() sync  |                |  ~~> GoodsReceived
-                       v                v
-   +-----------+   +-----------+      (Inventory and Accounting react)
-   | Invoicing |-->| Inventory |
-   +-----+-----+   +-----------+
-         |  ~~> InvoiceIssued
-         v
-   (handler calls Accounting's public API with an
-    Accounting-defined PostJournalEntry command)
-         |
-   +-----+------+   +----------------+   +------------------+
-   | Accounting |   | Platform Billing|  | Catalog          |
-   +-----+------+   +-------+--------+   +--------+---------+
-         |                  | implements           |
-         v                  v TenantWriteGuard     v
-   +---------------------------------------------------------+
-   |  Identity & Tenancy (tenants, users, settings, guard port)|
-   +---------------------------------------------------------+
-   |  Shared Kernel: Money, TenantId, DomainError, Clock, Ids |
-   +---------------------------------------------------------+
+```mermaid
+flowchart TD
+  Sales -->|"reserve() sync"| Inventory
+  Purchasing -.->|GoodsReceived| Inventory
+  Purchasing -.->|GoodsReceived| Accounting
+  Invoicing --> Inventory
+  Invoicing -.->|"InvoiceIssued: handler calls Accounting's public API<br/>with an Accounting-defined PostJournalEntry command"| Accounting
+  Accounting --> IDT
+  Billing["Platform Billing"] -->|implements TenantWriteGuard| IDT
+  Catalog --> IDT
+  subgraph Base[" "]
+    IDT["Identity & Tenancy (tenants, users, settings, guard port)"]
+    SK["Shared Kernel: Money, TenantId, DomainError, Clock, Ids"]
+  end
+  IDT ~~~ SK
 ```
 
 How the four flows work:

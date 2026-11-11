@@ -7,7 +7,7 @@ import { LazyBoard } from "./board/LazyBoard";
 import { Icon } from "./Icon";
 
 export function WhiteboardHub() {
-  // Rendered client-only (see LazyWhiteboardHub), so localStorage is available here.
+  // Rendered client-only after the store has loaded (see LazyWhiteboardHub).
   const [boards, setBoards] = useState<BoardMeta[]>(() => {
     if (!listBoards().some((b) => !b.problemSlug)) upsertBoardMeta({ id: "scratch", title: "Scratchpad" });
     return listBoards();

@@ -117,4 +117,4 @@ Budget limit 1,000.00, already approved 700.00. Two managers each approve a pend
 
 - Run the full suite 20 times in a row (`for i in $(seq 20); do npx vitest run || break; done`). All 20 runs pass. Flaky tests mean your interleaving is not actually controlled.
 - Each bug test must fail if you apply the fix to it (try it once to confirm the test is meaningful).
-- Your README contains, for each anomaly, the two-session timeline as an ASCII table and the SQLSTATE observed.
+- Your README contains, for each anomaly, the two-session timeline as a Mermaid `sequenceDiagram` (GitHub renders it) and the SQLSTATE observed.

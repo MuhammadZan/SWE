@@ -300,16 +300,11 @@ For the clock, Vitest also offers `vi.useFakeTimers()` and `vi.setSystemTime(...
 
 Test-driven development is a loop:
 
-```
-   +--------+      write a failing test       +--------+
-   |  RED   | <------------------------------ |REFACTOR|
-   +--------+                                  +--------+
-       |                                           ^
-       | write the least code to pass              | clean up, tests stay green
-       v                                           |
-   +--------+ ---------------------------------------+
-   | GREEN  |
-   +--------+
+```mermaid
+flowchart LR
+  RED -- "write the least code to pass" --> GREEN
+  GREEN -- "clean up, tests stay green" --> REFACTOR
+  REFACTOR -- "write a failing test" --> RED
 ```
 
 Walkthrough: finance asks for **proration** when a customer upgrades mid-cycle. Credit the unused part of the old plan, charge the unused part of the new plan.

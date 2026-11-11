@@ -230,11 +230,12 @@ invoiceRepositoryContract("postgres", async () => {
 });
 ```
 
-```
-                 invoiceRepositoryContract(name, makeRepo)
-                 /                |                     \
-   InMemoryInvoiceRepo   PostgresInvoiceRepo     MongoInvoiceRepo
-     (unit, ~5 ms)       (integration, Docker)   (integration, Docker)
+```mermaid
+flowchart TD
+  C["invoiceRepositoryContract(name, makeRepo)"]
+  C --> M["InMemoryInvoiceRepo<br/>(unit, ~5 ms)"]
+  C --> P["PostgresInvoiceRepo<br/>(integration, Docker)"]
+  C --> G["MongoInvoiceRepo<br/>(integration, Docker)"]
 ```
 
 When all of them pass, the implementations are substitutable in the Liskov sense, and use-case tests that rely on the in-memory fake are trustworthy. When a new bug is found in one adapter (say, Postgres returned lines in the wrong order), add the case to the shared suite so every implementation is held to it. This is exactly how the capstone proves that PostgreSQL and MongoDB are interchangeable.

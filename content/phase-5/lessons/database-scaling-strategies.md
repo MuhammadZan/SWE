@@ -134,13 +134,17 @@ Most ERP data is cold after a year or two but must be kept for 7 to 10 years for
 
 When one primary cannot absorb the writes or hold the data, split data across multiple Postgres clusters. For B2B SaaS the shard key is almost always `tenant_id`, because nearly every query is already tenant-scoped.
 
-```
-              +----------------------+
- request ---> | router: tenant->shard |  (lookup table, cached)
-              +----------------------+
-               /          |          \
-         shard 1       shard 2      shard 3     each: primary + replica
-         tenants...    tenants...   whale tenant alone
+```mermaid
+flowchart TD
+  RQ([request]) --> RT["router: tenant -#gt; shard<br/>(lookup table, cached)"]
+  subgraph SH["shards (each: primary + replica)"]
+    S1[("shard 1<br/>tenants...")]
+    S2[("shard 2<br/>tenants...")]
+    S3[("shard 3<br/>whale tenant alone")]
+  end
+  RT --> S1
+  RT --> S2
+  RT --> S3
 ```
 
 Use a **directory** (lookup table) rather than `hash(tenant_id) % N`: it lets you place a whale on its own shard and move tenants without rehashing everyone. What you give up: cross-shard joins and transactions (platform-wide reports go to an analytics store), global unique IDs from a single sequence (use UUID v7 or per-shard ranges), and simple migrations (run on every shard, tolerate partial failure). **Rebalancing** means copying a tenant's rows to another shard (logical replication filtered by tenant, or dump/restore), briefly freezing that tenant's writes, flipping the directory, and cleaning up.

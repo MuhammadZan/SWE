@@ -24,14 +24,34 @@ A token is a name for a decision. `color.danger` is a decision. `#dc2626` is a v
 
 Mature systems layer tokens so that each tier has one reason to change:
 
-```
-  Primitive (raw palette)      Semantic (meaning)           Component (specific use)
-  ---------------------        ------------------           ------------------------
-  red-800   = #991b1b   --->   color.danger.fg     --->     alert.danger.text
-  red-600   = #dc2626   --->   color.danger.border --->     alert.danger.border
-  red-50    = #fef2f2   --->   color.danger.bg     --->     alert.danger.background
-  space-4   = 16px      --->   space.inset.md      --->     card.padding
-  radius-2  = 8px       --->   radius.surface      --->     modal.radius
+```mermaid
+flowchart LR
+  subgraph P["Primitive (raw palette)"]
+    P1["red-800 = #991b1b"]
+    P2["red-600 = #dc2626"]
+    P3["red-50 = #fef2f2"]
+    P4["space-4 = 16px"]
+    P5["radius-2 = 8px"]
+  end
+  subgraph S["Semantic (meaning)"]
+    S1[color.danger.fg]
+    S2[color.danger.border]
+    S3[color.danger.bg]
+    S4[space.inset.md]
+    S5[radius.surface]
+  end
+  subgraph C["Component (specific use)"]
+    C1[alert.danger.text]
+    C2[alert.danger.border]
+    C3[alert.danger.background]
+    C4[card.padding]
+    C5[modal.radius]
+  end
+  P1 --> S1 --> C1
+  P2 --> S2 --> C2
+  P3 --> S3 --> C3
+  P4 --> S4 --> C4
+  P5 --> S5 --> C5
 ```
 
 - **Primitive tokens** define the full palette and scales. They have no meaning, only values. Components should never reference them directly.

@@ -191,9 +191,9 @@ If the sum of every app's pool exceeds `max_connections`, you will see `FATAL: s
 
 PgBouncer (or a managed equivalent: RDS Proxy, Supabase Supavisor, Neon's built-in PgBouncer endpoint) multiplexes many client connections onto few server connections.
 
-```
- 2,000 client connections   -->  PgBouncer  -->  40 Postgres connections
- (API, workers, lambdas)          pool_mode = transaction
+```mermaid
+flowchart LR
+  C(["2,000 client connections<br/>(API, workers, lambdas)"]) --> B["PgBouncer<br/>pool_mode = transaction"] --> P[("40 Postgres connections")]
 ```
 
 Modes: **session** (a client keeps one server connection until it disconnects; little multiplexing), **transaction** (a server connection is assigned per transaction and returned at `COMMIT`; the useful mode), **statement** (per statement; no multi-statement transactions).

@@ -4,24 +4,25 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { Catalog } from "@/lib/catalog";
 import { courseStats, useHydrated, useProgress } from "@/lib/progress";
+import { flush, getItem, initStore, keys, removeItem, setItem } from "@/lib/store";
 import { Icon } from "./Icon";
 import { ProgressBar } from "./ProgressRing";
 
 const PREFIX = "sej:";
 
-function backup() {
+async function backup() {
+  await initStore();
   const data: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)!;
-    if (k.startsWith(PREFIX)) data[k] = localStorage.getItem(k)!;
-  }
+  for (const k of keys()) data[k] = getItem(k)!;
   return JSON.stringify({ app: "engineer-journal", exportedAt: new Date().toISOString(), data }, null, 2);
 }
 
-function restore(json: string) {
+async function restore(json: string) {
   const parsed = JSON.parse(json) as { app?: string; data?: Record<string, string> };
   if (parsed.app !== "engineer-journal" || !parsed.data) throw new Error("Not an Engineer Journal backup file");
-  for (const [k, v] of Object.entries(parsed.data)) if (k.startsWith(PREFIX)) localStorage.setItem(k, v);
+  for (const [k, v] of Object.entries(parsed.data))
+    if (k.startsWith(PREFIX) && !k.startsWith("sej:__") && k !== "sej:theme") setItem(k, v);
+  await flush();
 }
 
 export function ProgressView({ catalog }: { catalog: Catalog }) {
@@ -36,8 +37,8 @@ export function ProgressView({ catalog }: { catalog: Catalog }) {
     ? Math.round((quizzes.reduce((a, q) => a + q.score / q.total, 0) / quizzes.length) * 100)
     : null;
 
-  function download() {
-    const blob = new Blob([backup()], { type: "application/json" });
+  async function download() {
+    const blob = new Blob([await backup()], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `engineer-journal-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -48,7 +49,7 @@ export function ProgressView({ catalog }: { catalog: Catalog }) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      restore(await file.text());
+      await restore(await file.text());
       window.location.reload();
     } catch (err) {
       setMsg((err as Error).message);
@@ -56,11 +57,11 @@ export function ProgressView({ catalog }: { catalog: Catalog }) {
     e.target.value = "";
   }
 
-  function reset() {
-    if (!confirm("Erase all progress, submissions and whiteboards in this browser?")) return;
-    Object.keys(localStorage)
-      .filter((k) => k.startsWith(PREFIX))
-      .forEach((k) => localStorage.removeItem(k));
+  async function reset() {
+    if (!confirm("Erase all progress, submissions and whiteboards? A copy stays in data/backups/ for 14 days.")) return;
+    await initStore();
+    keys().forEach((k) => removeItem(k));
+    await flush();
     window.location.reload();
   }
 
@@ -111,7 +112,11 @@ export function ProgressView({ catalog }: { catalog: Catalog }) {
 
       <section className="rounded-2xl border border-border bg-surface p-5">
         <h2 className="font-medium">Backup & restore</h2>
-        <p className="mt-1 text-sm text-muted">Includes lesson progress, quiz scores, submissions and all whiteboards.</p>
+        <p className="mt-1 text-sm text-muted">
+          Everything is saved to <code className="font-mono text-xs">data/store/</code> in the project folder, with a
+          daily snapshot in <code className="font-mono text-xs">data/backups/</code> (last 14 days). Clearing the
+          browser doesn&apos;t touch it. Download a file to move progress to another machine.
+        </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button onClick={download} className="inline-flex items-center gap-2 rounded-lg bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:opacity-90">
             <Icon name="download" className="size-4" /> Download backup

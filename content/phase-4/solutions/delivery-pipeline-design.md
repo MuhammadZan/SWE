@@ -8,39 +8,18 @@ The written document is honest about limits. It lists what rollback cannot undo,
 
 ### Diagram, described
 
-```
- dev branch (short-lived, < 2 days)
-    |  PR
-    v
- [CI on pull_request, no secrets]                       all automated, blocking
-   format | lint | typecheck | unit | integration(pg svc) | migration lint (squawk)
-   docker build (no push)        target: < 10 min
-    |  ruleset: required checks + 1 review + up to date (merge queue later)
-    v
- merge to main
-    |
- [release.yml] build once -> ghcr.io/acme/billing:sha-abc1234 (+ api, worker, web)
-    |
-    v
- STAGING (env: staging, auto)        anonymised seed data, staging secrets only
-   1. migrate (expand-only) using the new image
-   2. deploy API (rolling), worker (drain then replace), web (static upload)
-   3. smoke tests + /version check                    automated, blocking
-   4. enterprise preview: flags ON for preview tenants
-    |
- [approval: env production, required reviewer]       human, blocking
-    v
- PRODUCTION (env: production, branch main only, own secrets)
-   1. migrate (expand-only), lock_timeout 5s
-   2. API rolling, readiness-gated; worker drain-and-replace; web atomic upload
-   3. /version + smoke                                automated, blocking
-   4. 30 min watch: 5xx, p95, invoices issued, PDF failures (per version)
-         |                                            automated alerts, advisory
-         +-- regression --> rollback.yml (previous sha) owner: on-call engineer
-    v
- feature flags: release to enterprise after 24 h preview, then to everyone
- contract migrations: separate PR, labelled "contract", only after previous
- release has run in production for 1 week
+```mermaid
+flowchart TD
+  DB(["dev branch (short-lived, #lt; 2 days)"]) -- PR --> CI
+  CI["CI on pull_request, no secrets (all automated, blocking)<br/>format | lint | typecheck | unit | integration(pg svc) | migration lint (squawk)<br/>docker build (no push), target: #lt; 10 min"]
+  CI -- "ruleset: required checks + 1 review + up to date (merge queue later)" --> M[merge to main]
+  M --> REL["release.yml: build once<br/>ghcr.io/acme/billing:sha-abc1234 (+ api, worker, web)"]
+  REL --> STG["STAGING (env: staging, auto)<br/>anonymised seed data, staging secrets only<br/>1. migrate (expand-only) using the new image<br/>2. deploy API (rolling), worker (drain then replace), web (static upload)<br/>3. smoke tests + /version check (automated, blocking)<br/>4. enterprise preview: flags ON for preview tenants"]
+  STG -- "approval: env production, required reviewer (human, blocking)" --> PRD
+  PRD["PRODUCTION (env: production, branch main only, own secrets)<br/>1. migrate (expand-only), lock_timeout 5s<br/>2. API rolling, readiness-gated; worker drain-and-replace; web atomic upload<br/>3. /version + smoke (automated, blocking)<br/>4. 30 min watch: 5xx, p95, invoices issued, PDF failures (per version)"]
+  PRD -- "regression (automated alerts, advisory)" --> RB["rollback.yml (previous sha)<br/>owner: on-call engineer"]
+  PRD --> FF["feature flags: release to enterprise after 24 h preview, then to everyone"]
+  FF --> CT["contract migrations: separate PR, labelled #quot;contract#quot;,<br/>only after previous release has run in production for 1 week"]
 ```
 
 ### Decisions per area

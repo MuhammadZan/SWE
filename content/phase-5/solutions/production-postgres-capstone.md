@@ -8,29 +8,31 @@ It is also honest about what a single-host compose stack cannot prove (real AZ f
 
 ### Topology
 
+```mermaid
+flowchart TD
+  K([k6 load test]) --> API["API (Node) x2"]
+  API -- write pool --> PBW["PgBouncer (rw)<br/>transaction mode, TLS"]
+  API -- "read pool (reports)" --> PBR["PgBouncer (ro)<br/>transaction mode, TLS"]
+  PBW --> PRI[(pg-primary)]
+  PBR --> REP[(pg-replica)]
+  PRI -- "WAL (slot, async or ANY 1 sync)" --> REP
+  PRI -- archive-push --> MIN[("MinIO (backups)")]
+  RC["restore container (PITR drills)"] --> MIN
 ```
-                     +-------------------+
-   k6 load test ---> |   API (Node) x2   |
-                     +----+---------+----+
-                write pool|         |read pool (reports)
-                          v         v
-                   +-----------+ +-----------+
-                   | PgBouncer | | PgBouncer |   transaction mode, TLS
-                   |  (rw)     | |  (ro)     |
-                   +-----+-----+ +-----+-----+
-                         |             |
-                   +-----v-----+  WAL  +-----v------+
-                   | pg-primary|------>| pg-replica |  slot, async (or ANY 1 sync)
-                   +-----+-----+       +------------+
-              archive-push|
-                         v
-                   +------------+       +-------------------+
-                   | MinIO      |<------| restore container |  PITR drills
-                   | (backups)  |       +-------------------+
-                   +------------+
-   postgres_exporter (primary, replica), pgbouncer_exporter
-        -> Prometheus (rules) -> Grafana (dashboards) / Alertmanager
-   GitHub Actions: squawk lint -> migrate test DB -> integration tests
+
+```mermaid
+flowchart LR
+  subgraph EXP[exporters]
+    PE["postgres_exporter (primary, replica)"]
+    BE[pgbouncer_exporter]
+  end
+  EXP --> PROM["Prometheus (rules)"]
+  PROM --> GR["Grafana (dashboards)"]
+  PROM --> AM[Alertmanager]
+  subgraph GA[GitHub Actions]
+    direction LR
+    SQ[squawk lint] --> MT[migrate test DB] --> IT[integration tests]
+  end
 ```
 
 Back-of-envelope sizing for 400 tenants: if peak is 300 requests per second with an average of 2 queries at 3 ms each, the database is busy about 300 x 2 x 3 ms = 1.8 seconds of query time per second, so about 2 server connections are active on average. With bursts, a PgBouncer `default_pool_size` of 20 to 30 on the primary is plenty, while the app may hold hundreds of client connections. That is the argument for pooling, and the load test should show it.

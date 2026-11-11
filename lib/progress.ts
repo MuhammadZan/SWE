@@ -1,9 +1,10 @@
 "use client";
 
-// Local-first progress store. Everything lives in this browser's localStorage;
-// use Export / Import on the Progress page to back it up or move machines.
+// Progress store. Persisted to data/store/ on disk through lib/store.ts
+// (localStorage is only the fast cache). Daily snapshots go to data/backups/.
 import { useSyncExternalStore } from "react";
 import type { Catalog, CatalogPhase } from "./catalog";
+import { getItem, onSynced, setItem } from "./store";
 
 export type Submission = {
   repoUrl: string;
@@ -38,7 +39,7 @@ const listeners = new Set<() => void>();
 function read(): ProgressState {
   if (cache) return cache;
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getItem(KEY);
     cache = raw ? { ...EMPTY, ...(JSON.parse(raw) as ProgressState) } : EMPTY;
   } catch {
     cache = EMPTY;
@@ -48,11 +49,7 @@ function read(): ProgressState {
 
 function write(next: ProgressState) {
   cache = next;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    /* storage full or blocked: keep in-memory state */
-  }
+  setItem(KEY, JSON.stringify(next));
   listeners.forEach((l) => l());
 }
 
@@ -65,9 +62,14 @@ function subscribe(listener: () => void) {
     }
   };
   window.addEventListener("storage", onStorage);
+  const offSynced = onSynced(() => {
+    cache = null; // the disk copy was just loaded into the cache
+    listener();
+  });
   return () => {
     listeners.delete(listener);
     window.removeEventListener("storage", onStorage);
+    offSynced();
   };
 }
 

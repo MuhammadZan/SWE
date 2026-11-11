@@ -42,12 +42,14 @@ Three new indexes on `invoices` and one on `invoice_lines`, within the limits.
 
 ### Access paths
 
-```
-Q1 overdue list (keyset)
-  invoices_open_due_idx  --Index Only Scan, Index Cond: tenant_id = $1
-                           AND due_date < current_date AND (due_date, id) > ($2, $3)-->
-  LIMIT 50 stops after ~50 entries --> Nested Loop --> customers_pkey (50 lookups for name)
-  rows read: ~50 index entries + 50 customer rows. Target: under 5 ms on every page.
+```mermaid
+flowchart TD
+  subgraph Q1["Q1 overdue list (keyset)"]
+    A["invoices_open_due_idx"] -- "Index Only Scan, Index Cond: tenant_id = $1 AND due_date #lt; current_date AND (due_date, id) #gt; ($2, $3)" --> B["LIMIT 50 stops after ~50 entries"]
+    B --> C["Nested Loop"]
+    C --> D["customers_pkey (50 lookups for name)"]
+  end
+  D -.- N["rows read: ~50 index entries + 50 customer rows. Target: under 5 ms on every page."]
 ```
 
 ```sql
@@ -66,22 +68,26 @@ Page 200 costs the same as page 1 because the row comparison is an index conditi
 
 The Index Only Scan depends on the visibility map. Invoices that change status often have recently modified heap pages, so expect some `Heap Fetches`; still cheap at 50 rows.
 
-```
-Q2 revenue by month (12 months)
-  invoices_paid_month_idx --Index Only Scan, tenant_id = $1 AND paid_at in range-->
-  ~1.2M index entries --> (region filter: Hash Join to customers filtered by region)
-  --> HashAggregate by date_trunc('month', paid_at) --> 12 rows
-  Target: 150 ms without region, 300 ms with region. Fallback below if missed.
+```mermaid
+flowchart TD
+  subgraph Q2["Q2 revenue by month (12 months)"]
+    A["invoices_paid_month_idx"] -- "Index Only Scan, tenant_id = $1 AND paid_at in range" --> B["~1.2M index entries"]
+    B -- "(region filter: Hash Join to customers filtered by region)" --> C["HashAggregate by date_trunc('month', paid_at)"]
+    C --> D["12 rows"]
+  end
+  D -.- N["Target: 150 ms without region, 300 ms with region. Fallback below if missed."]
 ```
 
 Revenue is bucketed by `paid_at`, which is a decision to state explicitly: finance teams usually mean cash received for a "revenue by payment month" panel, and `issued_at` for invoiced revenue. Pick one and name it.
 
-```
-Q3 top products (one month)
-  invoice_lines_tenant_issued_idx --Index Only Scan, ~780k entries-->
-  HashAggregate by product_id (15k groups) --> top-N heapsort LIMIT 20
-  --> Nested Loop to products_pkey (20 lookups)
-  Target: under 500 ms for one month. Twelve months (~9M rows): use the fallback.
+```mermaid
+flowchart TD
+  subgraph Q3["Q3 top products (one month)"]
+    A["invoice_lines_tenant_issued_idx"] -- "Index Only Scan, ~780k entries" --> B["HashAggregate by product_id (15k groups)"]
+    B --> C["top-N heapsort LIMIT 20"]
+    C --> D["Nested Loop to products_pkey (20 lookups)"]
+  end
+  D -.- N["Target: under 500 ms for one month. Twelve months (~9M rows): use the fallback."]
 ```
 
 Denormalizing `issued_at` onto `invoice_lines` is the key move. The alternative, `invoice_lines (tenant_id, invoice_id)`, forces a join from 110,000 invoices to their lines with a Nested Loop of 110,000 index probes or a Hash Join over a large lines scan, both far slower. The cost is one extra column written once at insert (invoice dates do not change after issue in most ERPs; if yours allows edits, the update must touch the lines too).

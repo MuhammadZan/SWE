@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { slugify } from "@/lib/slug";
+import { Mermaid } from "./Mermaid";
 
 function textOf(node: React.ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -18,6 +19,14 @@ export function Markdown({ children, className = "" }: { children: string; class
         components={{
           h2: ({ children }) => <h2 id={slugify(textOf(children))}>{children}</h2>,
           h3: ({ children }) => <h3 id={slugify(textOf(children))}>{children}</h3>,
+          // ```mermaid fences render as diagrams; everything else stays a code block.
+          pre: ({ children, node }) => {
+            const code = node?.children[0];
+            const classes = code && "properties" in code ? code.properties?.className : undefined;
+            if (Array.isArray(classes) && classes.includes("language-mermaid"))
+              return <Mermaid chart={textOf(children).replace(/\n$/, "")} />;
+            return <pre>{children}</pre>;
+          },
           a: ({ href, children }) => {
             const external = href?.startsWith("http");
             return (

@@ -11,14 +11,18 @@ This lesson separates the two concerns cleanly, compares the common mechanisms w
 
 After login, the server needs a way to recognize subsequent requests. Two broad options:
 
-```
-Server-side session                         Self-contained token (JWT)
--------------------                         --------------------------
-Cookie: sid=opaque-random-256-bit           Authorization: Bearer eyJhbGciOi...
-        |                                           |
-        v                                           v
-  sessions table / Redis                      verify signature + exp
-  -> user_id, tenant_id, expires              -> claims inside the token
+```mermaid
+flowchart LR
+  subgraph SS["Server-side session"]
+    direction TB
+    S1["Cookie: sid=opaque-random-256-bit"] --> S2[("sessions table / Redis")]
+    S2 --> S3["user_id, tenant_id, expires"]
+  end
+  subgraph JW["Self-contained token (JWT)"]
+    direction TB
+    J1["Authorization: Bearer eyJhbGciOi..."] --> J2["verify signature + exp"]
+    J2 --> J3["claims inside the token"]
+  end
 ```
 
 | | Server-side session | JWT access token |
@@ -115,23 +119,24 @@ These two are constantly confused:
 
 For a web app the flow to use is **Authorization Code with PKCE**. The implicit flow is deprecated.
 
-```
- Browser              Your app (backend)             Identity provider (IdP)
-    |  click "Sign in with SSO"  |                              |
-    |--------------------------->| generate state, nonce,       |
-    |                            | code_verifier; store them    |
-    |<--- 302 to IdP /authorize?client_id&redirect_uri&         |
-    |     scope=openid email&state&nonce&code_challenge -------->|
-    |                      user authenticates (+ MFA) at IdP     |
-    |<---------------- 302 to redirect_uri?code=...&state=... ---|
-    |--------------------------->| check state matches          |
-    |                            |-- POST /token (code,         |
-    |                            |   code_verifier, client auth)->|
-    |                            |<-- id_token, access_token ----|
-    |                            | verify id_token: sig, iss,   |
-    |                            | aud, exp, nonce              |
-    |                            | map (iss, sub) -> user,      |
-    |<--- Set-Cookie: session ---| create local session         |
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant A as Your app (backend)
+  participant I as Identity provider (IdP)
+  B->>A: click "Sign in with SSO"
+  Note over A: generate state, nonce, code_verifier, store them
+  A-->>B: 302 to IdP /authorize
+  B->>I: /authorize?client_id&redirect_uri&scope=openid email&state&nonce&code_challenge
+  Note over B,I: user authenticates (+ MFA) at IdP
+  I-->>B: 302 to redirect_uri?code=...&state=...
+  B->>A: redirect_uri?code=...&state=...
+  Note over A: check state matches
+  A->>I: POST /token (code, code_verifier, client auth)
+  I-->>A: id_token, access_token
+  Note over A: verify id_token: sig, iss, aud, exp, nonce
+  Note over A: map (iss, sub) → user, create local session
+  A-->>B: Set-Cookie: session
 ```
 
 Practical rules:
@@ -226,17 +231,20 @@ await tx.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
 
 ## Where checks live in a layered architecture
 
-```
-  HTTP layer (route/controller)
-    - authenticate: session/JWT -> principal { userId, tenantId, roles }
-    - reject unauthenticated (401); coarse checks like "is a member"
-        |
-  Application layer (use cases)
-    - authorize the action: can(principal, "invoice:finalize", invoice)
-    - business rules, including attribute rules (amount limits, ownership)
-        |
-  Infrastructure (repositories, DB)
-    - tenant scoping on every query; RLS as the safety net
+```mermaid
+flowchart TD
+  subgraph HTTP["HTTP layer (route/controller)"]
+    H1["authenticate: session/JWT → principal { userId, tenantId, roles }"]
+    H2["reject unauthenticated (401), coarse checks like #quot;is a member#quot;"]
+  end
+  subgraph APP["Application layer (use cases)"]
+    A1["authorize the action: can(principal, #quot;invoice:finalize#quot;, invoice)"]
+    A2["business rules, including attribute rules (amount limits, ownership)"]
+  end
+  subgraph INF["Infrastructure (repositories, DB)"]
+    I1["tenant scoping on every query, RLS as the safety net"]
+  end
+  HTTP --> APP --> INF
 ```
 
 The UI hides buttons for usability only. Security checks happen on the server, in the use case, because use cases are called from multiple entry points (HTTP, background jobs, CLI scripts, imports) and each must enforce the same rule.

@@ -8,21 +8,33 @@ The document is honest about month-start. It computes worker-seconds for each cl
 
 ### Diagram in words
 
+```mermaid
+flowchart TD
+  B([Browser]) --> LB
+  LB --> API["ERP API"]
+  API -- insert --> PG[("Postgres (report_requests, documents)")]
+  subgraph queues["Redis/BullMQ or SQS"]
+    QS{{"q:small"}}
+    QST{{"q:statements"}}
+    QH{{"q:heavy"}}
+  end
+  API -- enqueue --> QS & QST & QH
+  QS --> PS["small pool (always on)"]
+  QST --> PST["statement pool (scale on depth)"]
+  QH --> PH["heavy pool: 1 render / container, 2 GB limit (scale on oldest-job age)"]
+  PS & PST & PH -- "status updates" --> PG
+  PS & PST & PH --> OS[("Object storage (S3/R2)<br/>lifecycle: ad hoc 90 d, legal 7 y (object lock)")]
+  B -- "signed URL" --> OS
 ```
-Browser -> LB -> ERP API --insert--> Postgres (report_requests, documents)
-                    |                       ^
-                    +--enqueue--+           | status updates
-                                v           |
-             [q:small]  [q:statements]  [q:heavy]   (Redis/BullMQ or SQS)
-                 |            |              |
-           small pool   statement pool   heavy pool (1 render / container, 2 GB limit)
-           (always on)  (scale on depth) (scale on oldest-job age)
-                 \            |              /
-                  +----> Object storage (S3/R2) <---- signed URL ---- Browser
-                         lifecycle: ad hoc 90 d, legal 7 y (object lock)
-Scheduler (1st, 02:00) -> statement fan-out job -> per-tenant chunk jobs -> per-customer jobs
-Failed after N attempts -> DLQ -> alert
-Completion -> status row (polling) + email/in-app for heavy reports
+
+```mermaid
+flowchart LR
+  S["Scheduler (1st, 02:00)"] --> F["statement fan-out job"]
+  F --> C["per-tenant chunk jobs"]
+  C --> P["per-customer jobs"]
+  J["Job"] -- "failed after N attempts" --> D{{DLQ}}
+  D --> A[alert]
+  J -- completion --> ST["status row (polling) + email/in-app for heavy reports"]
 ```
 
 ### Estimations

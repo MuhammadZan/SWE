@@ -98,32 +98,24 @@ If you receive 1,000 req/s and each takes 200 ms, you have 1,000 x 0.2 = 200 req
 
 Now draw boxes and arrows. Start with the simplest thing that meets the requirements, then add components only when a number or requirement forces you to.
 
-```
-                +-----------+
-   Browser ---> |    CDN    | ---> static assets (JS, CSS, images)
-                +-----------+
-                      |
-                      v
-               +--------------+
-               | Load Balancer|
-               +--------------+
-                 |          |
-                 v          v
-           +---------+  +---------+
-           | API #1  |  | API #2  |   (stateless Node services)
-           +---------+  +---------+
-             |   |   \      /   |
-             |   |    \    /    |
-             |   v     v  v     v
-             | +-------+  +-------------+
-             | | Redis |  | Job Queue   |
-             | +-------+  +-------------+
-             |                   |
-             v                   v
-      +-------------+     +-------------+     +----------------+
-      |  Postgres   |<----|  Workers    |---->| Object Storage |
-      |  (primary)  |     | (PDF, mail) |     |  (S3 / R2)     |
-      +-------------+     +-------------+     +----------------+
+```mermaid
+flowchart TD
+  B([Browser]) --> CDN
+  CDN --> SA["static assets (JS, CSS, images)"]
+  CDN --> LB[Load Balancer]
+  subgraph api["stateless Node services"]
+    A1["API #1"]
+    A2["API #2"]
+  end
+  LB --> A1 & A2
+  A1 --> PG[("Postgres (primary)")]
+  A1 --> R[(Redis)]
+  A1 --> Q{{Job Queue}}
+  A2 --> R
+  A2 --> Q
+  Q --> W["Workers (PDF, mail)"]
+  W --> PG
+  W --> OS[("Object Storage (S3 / R2)")]
 ```
 
 For each box, you should be able to answer: **what is it for, and what happens if it dies?**

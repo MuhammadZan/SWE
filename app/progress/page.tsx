@@ -9,7 +9,8 @@ export default function ProgressPage() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 lg:py-12">
       <h1 className="text-3xl font-semibold tracking-tight">Progress</h1>
       <p className="mt-2 text-muted">
-        Everything is stored locally in this browser. Download a backup now and then, and restore it on another machine.
+        Saved to disk in this project&apos;s <code className="font-mono text-sm">data/</code> folder, so clearing the browser
+        won&apos;t lose it.
       </p>
       <ProgressView catalog={getCatalog()} />
     </div>

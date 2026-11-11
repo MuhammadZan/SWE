@@ -241,10 +241,10 @@ export class RenewSubscription {
 export class StripePaymentCollector implements PaymentCollector { /* uses the Stripe SDK */ }
 ```
 
-```
-  RenewSubscription --> PaymentCollector <-- StripePaymentCollector
-     (policy)            (abstraction,          (detail)
-                          owned by policy)
+```mermaid
+flowchart LR
+  RS["RenewSubscription<br/>(policy)"] --> PC["PaymentCollector<br/>(abstraction, owned by policy)"]
+  SPC["StripePaymentCollector<br/>(detail)"] --> PC
 ```
 
 Dependency Injection (next lesson) is the *technique* that supplies `StripePaymentCollector` to `RenewSubscription` at runtime. DIP is the *principle* that tells you which direction the arrows should point.

@@ -27,21 +27,21 @@ Vertical scaling is the right first move for databases, which are hard to scale 
 
 Horizontal scaling means running N identical copies of a service behind a **load balancer**.
 
-```
-                       +----------------+
-   Clients ----------> | Load Balancer  |  (health checks every 5 s)
-                       +----------------+
-                       /       |        \
-                      v        v         v
-                 +-------+ +-------+ +-------+
-                 | API 1 | | API 2 | | API 3 |   identical, stateless
-                 +-------+ +-------+ +-------+
-                      \        |        /
-                       v       v       v
-                  +--------------------------+
-                  |  Shared state:           |
-                  |  Postgres, Redis, S3     |
-                  +--------------------------+
+```mermaid
+flowchart TD
+  C([Clients]) --> LB["Load Balancer (health checks every 5 s)"]
+  subgraph api["identical, stateless"]
+    A1["API 1"]
+    A2["API 2"]
+    A3["API 3"]
+  end
+  LB --> A1 & A2 & A3
+  subgraph S["Shared state"]
+    PG[(Postgres)]
+    R[(Redis)]
+    S3[(S3)]
+  end
+  A1 & A2 & A3 --> S
 ```
 
 **Pros**
@@ -165,9 +165,10 @@ Fixes:
 - Size app pools deliberately. Total across all instances must stay under the database limit with headroom.
 - Put **PgBouncer** (or a managed pooler such as RDS Proxy, Supabase's pooler, Neon's pooler) between apps and Postgres. In transaction mode, thousands of client connections share a few dozen real ones.
 
-```
- 20 API instances x 50 client conns       PgBouncer           Postgres
- = 1,000 client connections        --->  (transaction mode) ---> 40 server connections
+```mermaid
+flowchart LR
+  A["20 API instances x 50 client conns"] -- "= 1,000 client connections" --> P["PgBouncer (transaction mode)"]
+  P -- "40 server connections" --> PG[(Postgres)]
 ```
 
 Caveat: transaction-mode pooling breaks session-level features like `SET` statements, advisory locks held across transactions, and some prepared statement setups. Know what your ORM does.
@@ -176,11 +177,13 @@ Caveat: transaction-mode pooling breaks session-level features like `SET` statem
 
 A replica is a copy of the primary database that receives a continuous stream of changes and serves read-only queries.
 
-```
-          writes                     reads
- API ---------------> Primary ---replication---> Replica 1  <------ reports, dashboards
-                         |                       Replica 2  <------ search, lists
-                         +------ async, lag 10 ms to seconds
+```mermaid
+flowchart LR
+  API -- writes --> P[(Primary)]
+  P -- "replication (async, lag 10 ms to seconds)" --> R1[(Replica 1)]
+  P -- "replication" --> R2[(Replica 2)]
+  RD(["reports, dashboards"]) -- reads --> R1
+  SL(["search, lists"]) -- reads --> R2
 ```
 
 Great for read-heavy SaaS: send reports, dashboards and list pages to replicas. The catch is **replication lag**. A user saves an invoice (write to primary), the page redirects to the invoice list (read from replica), and the new invoice is not there yet. Solutions:
@@ -193,12 +196,15 @@ Great for read-heavy SaaS: send reports, dashboards and list pages to replicas. 
 
 **Sharding** splits data across multiple independent databases, each holding a subset of rows. For a multi-tenant SaaS, the natural shard key is `tenant_id`: tenants 1–1,000 on shard A, 1,001–2,000 on shard B, or better, a lookup table mapping tenant to shard so you can move big tenants.
 
-```
-            +----------------+
-  API ----> | tenant -> shard|  (lookup or hash)
-            +----------------+
-             /       |       \
-          Shard A  Shard B  Shard C   (each a full Postgres with replicas)
+```mermaid
+flowchart TD
+  API --> R["tenant -#gt; shard (lookup or hash)"]
+  subgraph shards["each a full Postgres with replicas"]
+    A[("Shard A")]
+    B[("Shard B")]
+    C[("Shard C")]
+  end
+  R --> A & B & C
 ```
 
 Sharding gives near-unlimited write scale, but it costs a lot: cross-shard queries and joins become application code, cross-shard transactions mostly disappear, rebalancing is a project, and every tool (migrations, backups, analytics) must handle N databases. Most SaaS companies never need it. Do it last, after you have exhausted the options above, and choose the shard key so that almost every query hits exactly one shard.

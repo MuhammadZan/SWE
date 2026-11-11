@@ -206,26 +206,24 @@ The more formal version is **SLOs**: "99.9% of `POST /invoices` requests succeed
 
 Make this a scripted step in the pipeline plus a short human checklist.
 
-```
-  deploy finished
-       |
-       v
-  [automated, in pipeline]
-   1. /version returns the new tag on every instance
-   2. /readyz is 200
-   3. smoke test: GET /api/plans, POST a test invoice on a test tenant
-       |
-       v
-  [first 15-30 minutes, dashboard filtered by version]
-   4. 5xx rate: new version vs previous version
-   5. p95 latency of key routes vs previous version
-   6. error logs grouped by type: anything new?
-   7. business metrics: invoices issued, payments succeeded, signups
-       |
-       +-- regression? --> roll back first, investigate second
-       |
-       v
-   deploy marked good
+```mermaid
+flowchart TD
+  DF([deploy finished]) --> AUTO
+  subgraph AUTO["automated, in pipeline"]
+    direction TB
+    A1["1. /version returns the new tag on every instance"] --> A2["2. /readyz is 200"]
+    A2 --> A3["3. smoke test: GET /api/plans, POST a test invoice on a test tenant"]
+  end
+  AUTO --> WATCH
+  subgraph WATCH["first 15-30 minutes, dashboard filtered by version"]
+    direction TB
+    W4["4. 5xx rate: new version vs previous version"] --> W5["5. p95 latency of key routes vs previous version"]
+    W5 --> W6["6. error logs grouped by type: anything new?"]
+    W6 --> W7["7. business metrics: invoices issued, payments succeeded, signups"]
+  end
+  WATCH --> Q{regression?}
+  Q -- yes --> RB["roll back first, investigate second"]
+  Q -- no --> OK([deploy marked good])
 ```
 
 A simple automated gate in GitHub Actions:

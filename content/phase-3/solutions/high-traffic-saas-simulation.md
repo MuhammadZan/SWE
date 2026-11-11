@@ -14,14 +14,18 @@ The repo contains a concurrency test suite that fires hundreds of simultaneous b
 - **Writes:** 120 bids/s on one row means 120 transactions/s serialized on that row's lock. If the locked section is about 2 ms (one `UPDATE` plus one `INSERT` in a short transaction), a row can handle roughly 500/s, so 120/s fits with headroom. If the section is 30 ms because something slow sits inside it, the ceiling drops to about 33/s and latency explodes.
 - **Connections:** Little's Law: 1,000 bids/s x 5 ms = 5 connections busy on average, plus cache misses. Two to four API instances with pools of 10–15 each fit easily under `max_connections = 100`; put PgBouncer in front anyway so scaling instances does not change the math.
 
-```
-k6 (separate host) -> Nginx (least_conn) -> API x2..4 (stateless)
-                                             |  GET: Redis lot snapshot (TTL 2 s + delete on accepted bid)
-                                             |  POST: Redis rate limit -> [optional Lua gatekeeper]
-                                             |        -> PgBouncer -> Postgres (atomic UPDATE + INSERT bid)
-                                             |        -> after commit: enqueue side effects
-                                             v
-                               BullMQ: notifications, audit, analytics -> workers -> DLQ + alert
+```mermaid
+flowchart TD
+  K["k6 (separate host)"] --> N["Nginx (least_conn)"]
+  N --> API["API x2..4 (stateless)"]
+  API -- GET --> RS[("Redis lot snapshot (TTL 2 s + delete on accepted bid)")]
+  API -- POST --> RL["Redis rate limit"]
+  RL --> G["[optional Lua gatekeeper]"]
+  G --> PB[PgBouncer]
+  PB --> PG[("Postgres (atomic UPDATE + INSERT bid)")]
+  API -- "after commit: enqueue side effects" --> Q{{"BullMQ: notifications, audit, analytics"}}
+  Q --> W[workers]
+  W --> D["DLQ + alert"]
 ```
 
 ### The write path

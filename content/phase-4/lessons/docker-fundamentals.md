@@ -6,15 +6,11 @@ Docker replaces "the machine as configured by hand" with an **image**: a frozen,
 
 ## Images vs containers
 
-```
-   Dockerfile  --docker build-->  Image (read-only, layered, tagged)
-                                     |
-                       docker run    |   docker run
-                         +-----------+-----------+
-                         v                       v
-                   Container A              Container B
-               (image + thin writable     (same image, own
-                layer + process)           writable layer)
+```mermaid
+flowchart TD
+  DF[Dockerfile] -- docker build --> IMG["Image (read-only, layered, tagged)"]
+  IMG -- docker run --> CA["Container A<br/>(image + thin writable layer + process)"]
+  IMG -- docker run --> CB["Container B<br/>(same image, own writable layer)"]
 ```
 
 - An **image** is a read-only template: a stack of filesystem layers plus metadata (default command, exposed ports, env vars, user). It has a name and tag like `ghcr.io/acme/billing-api:1.4.2`.
@@ -147,11 +143,12 @@ Rule: treat `.dockerignore` like a security control, not a performance tweak. An
 
 Build the image once, configure it per environment at runtime. That is the twelve-factor "config in the environment" principle.
 
-```
-  same image: ghcr.io/acme/billing-api:sha-3f9c2a1
-      |                        |                         |
-  DATABASE_URL=dev-db     DATABASE_URL=staging-db    DATABASE_URL=prod-db
-  LOG_LEVEL=debug         LOG_LEVEL=info             LOG_LEVEL=info
+```mermaid
+flowchart TD
+  IMG["same image: ghcr.io/acme/billing-api:sha-3f9c2a1"]
+  IMG --> DEV["DATABASE_URL=dev-db<br/>LOG_LEVEL=debug"]
+  IMG --> STG["DATABASE_URL=staging-db<br/>LOG_LEVEL=info"]
+  IMG --> PRD["DATABASE_URL=prod-db<br/>LOG_LEVEL=info"]
 ```
 
 Validate config at startup so a misconfigured container fails immediately and loudly rather than at the first invoice:

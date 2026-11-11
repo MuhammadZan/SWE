@@ -13,27 +13,26 @@ You may substitute a different domain if it has comparable money logic and a dat
 
 ## Target architecture
 
-```
- developer
-    |  push branch, open PR
-    v
- GitHub ---------------------------------------------------------------+
- | PR workflow (ci.yml)                                                |
- |   [format] [lint] [typecheck] [unit] [integration + pg service]     |
- |   [docker build (no push)]                                          |
- |   required checks --> branch protection on main                     |
- |                                                                     |
- | main workflow (release.yml)                                         |
- |   gates again --> build + push ghcr.io/<you>/billing:sha-xxxxxxx    |
- |   --> migrate (expand-only) --> deploy STAGING --> smoke            |
- |   --> [approval: production env] --> migrate --> deploy PROD        |
- |   --> verify /version + smoke --> done | rollback                   |
- +---------------------------------------------------------------------+
-                         |                          |
-                         v                          v
-                  staging host                production host
-            (Caddy + blue/green or rolling  (same mechanism, own secrets)
-             on a VPS, or a PaaS)
+```mermaid
+flowchart TD
+  DEV([developer]) -- "push branch, open PR" --> C
+  subgraph GH[GitHub]
+    subgraph CIW["PR workflow (ci.yml)"]
+      C["format, lint, typecheck, unit, integration + pg service<br/>docker build (no push)"]
+    end
+    C -- required checks --> BP[branch protection on main]
+    subgraph RW["main workflow (release.yml)"]
+      M1[gates again] --> M2["build + push ghcr.io/#lt;you#gt;/billing:sha-xxxxxxx"]
+      M2 --> STG["migrate (expand-only), deploy STAGING, smoke"]
+      STG --> APP["approval: production env"]
+      APP --> PRD["migrate, deploy PROD"]
+      PRD --> VER["verify /version + smoke"]
+      VER -- pass --> DONE([done])
+      VER -- fail --> RB[rollback]
+    end
+  end
+  STG --> SH["staging host<br/>(Caddy + blue/green or rolling on a VPS, or a PaaS)"]
+  PRD --> PH["production host<br/>(same mechanism, own secrets)"]
 ```
 
 ## What to build

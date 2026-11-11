@@ -13,13 +13,14 @@ None of that is a hardware failure. Backups and high availability (HA) solve dif
 - **RPO (Recovery Point Objective)**: how much data you can afford to lose, measured in time. "RPO 5 minutes" means after any incident you can restore to within 5 minutes of the failure.
 - **RTO (Recovery Time Objective)**: how long you can be down while recovering.
 
-```
-           last recoverable point         service restored
-                    |                            |
- ---------[data]----|----X-----------------------|-------> time
-                    |<-->|<--------------------->|
-                     RPO          RTO
-                          X = incident
+```mermaid
+flowchart LR
+  subgraph TL["time →"]
+    direction LR
+    D[data] --> LRP[last recoverable point]
+    LRP -- "RPO" --> X["X = incident"]
+    X -- "RTO" --> SR[service restored]
+  end
 ```
 
 These are business decisions with costs. For a B2B ERP, a typical target is RPO under 5 minutes and RTO under 1 hour for a disaster, and near-zero RPO with RTO under 2 minutes for a single server failure. Write them down, then design to them and **measure** them in drills. An unmeasured RTO is a guess.
@@ -56,11 +57,14 @@ Good for: small databases, copying one tenant or table, major-version upgrades, 
 
 Postgres writes every change to the **write-ahead log (WAL)** before changing data files. A physical backup is a copy of the data directory (a **base backup**) plus the continuous stream of WAL segments since then. Replaying WAL on top of the base backup can bring the database to **any moment** covered by the archive. That is point-in-time recovery.
 
-```
-base backup (Sun 01:00)   WAL segments, 16 MB each, archived continuously
-[==== data files ====]  -> 000..01 -> 000..02 -> ... -> 000..9F -> ...
-                                                         ^
-                                     restore target: Tue 16:38:59
+```mermaid
+flowchart LR
+  BB[("base backup (Sun 01:00)<br/>data files")] --> W1
+  subgraph WAL["WAL segments, 16 MB each, archived continuously"]
+    direction LR
+    W1["000..01"] --> W2["000..02"] --> W3["..."] --> W9F["000..9F"] --> W4["..."]
+  end
+  T(["restore target: Tue 16:38:59"]) -.-> W9F
 ```
 
 | | pg_dump | Base backup + WAL |
@@ -143,13 +147,13 @@ That weekly duration **is** your measured RTO for the restore path.
 
 A replica (standby) connects to the primary and receives WAL as it is written, replaying it continuously.
 
-```
-              WAL stream
- [primary] ---------------> [replica 1, same region, other AZ]
-     |      \
-     |       -------------> [replica 2, other region]
-     v
- WAL archive (S3)  <- replicas can also fetch from here if they fall behind
+```mermaid
+flowchart LR
+  P[(primary)] -- WAL stream --> R1[("replica 1, same region, other AZ")]
+  P -- WAL stream --> R2[("replica 2, other region")]
+  P --> A[("WAL archive (S3)")]
+  A -. "replicas can also fetch from here if they fall behind" .-> R1
+  A -.-> R2
 ```
 
 ```

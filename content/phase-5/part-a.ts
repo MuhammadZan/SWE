@@ -454,7 +454,7 @@ export const problemsA: ProblemMeta[] = [
       "docker-compose.yml and a README with how to start the database and run the suite.",
       "Schema and reset script used by every test.",
       "One test file per anomaly, each with bug and fix tests, plus unit tests for the retry helper.",
-      "README with an ASCII two-session timeline and the observed SQLSTATE for each anomaly.",
+      "README with a two-session timeline (a Mermaid sequenceDiagram renders on GitHub) and the observed SQLSTATE for each anomaly.",
       "Output of 20 consecutive passing runs (or a CI badge running the loop).",
     ],
     relatedLessons: ["transactions-isolation-locking", "data-modeling-for-production"],

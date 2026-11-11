@@ -40,20 +40,17 @@ Your diagram and write-up must cover the full path of a change from a developer'
 
 ## Example fragment of a good diagram
 
-```
-  feature/*  --PR-->  [CI: lint | typecheck | unit | integration(pg)]  --required checks-->
-     merge to main --> [build image sha-xxxx] --> ghcr.io
-                                                   |
-                         auto deploy               v
-                       +------------------  STAGING  <-- smoke tests, migrations (expand only)
-                       |                       |
-                       |              approval (env: production)
-                       |                       v
-                       |                PRODUCTION  rolling, readiness-gated
-                       |                       |
-                       |          5xx / p95 / business metrics for 30 min
-                       |                       |
-                       +------ rollback <-- regression? (redeploy previous sha)
+```mermaid
+flowchart TD
+  F(["feature/*"]) -- PR --> CI["CI: lint | typecheck | unit | integration(pg)"]
+  CI -- required checks --> M[merge to main]
+  M --> B["build image sha-xxxx"] --> REG[(ghcr.io)]
+  REG -- auto deploy --> ST["STAGING<br/>smoke tests, migrations (expand only)"]
+  ST -- "approval (env: production)" --> PR["PRODUCTION<br/>rolling, readiness-gated"]
+  PR --> W["5xx / p95 / business metrics for 30 min"]
+  W --> Q{regression?}
+  Q -- yes --> RB["rollback (redeploy previous sha)"]
+  RB -. "previous sha from registry" .-> REG
 ```
 
 Yours must be more complete than this: include the worker, the frontend, feature flags, and where the migration linter sits.

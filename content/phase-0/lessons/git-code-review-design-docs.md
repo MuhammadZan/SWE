@@ -6,16 +6,55 @@ Git history, pull requests, reviews and design documents are how engineering tea
 
 ## Branching strategies: trunk-based vs git-flow
 
+```mermaid
+---
+title: Git-flow
+---
+gitGraph
+  commit id: "m1"
+  branch develop
+  commit id: "d1"
+  branch feature
+  commit id: "f1"
+  checkout develop
+  commit id: "d2"
+  checkout feature
+  commit id: "f2"
+  commit id: "f3 (weeks)"
+  checkout develop
+  merge feature
+  branch release
+  commit id: "r1"
+  commit id: "r2"
+  checkout main
+  merge release
+  checkout develop
+  merge release
 ```
-Git-flow                               Trunk-based
----------                              -----------
-main     o---------------o---          main  o--o--o--o--o--o--o
-          \             /                     \/ \/ \/ \/   (short-lived
-release    o-----o-----o                      branches, hours to ~2 days)
-            \         /
-develop  o---o--o--o--o--o
-              \      /
-feature        o--o-o   (weeks)
+
+```mermaid
+---
+title: "Trunk-based (short-lived branches, hours to ~2 days)"
+---
+gitGraph
+  commit id: "t1"
+  branch b1
+  commit id: "work 1"
+  checkout main
+  merge b1
+  branch b2
+  commit id: "work 2"
+  checkout main
+  merge b2
+  branch b3
+  commit id: "work 3"
+  checkout main
+  merge b3
+  branch b4
+  commit id: "work 4"
+  checkout main
+  merge b4
+  commit id: "t2"
 ```
 
 | | Git-flow | Trunk-based |
@@ -74,18 +113,48 @@ Rules worth following:
 
 Both integrate changes; they differ in how history looks.
 
+```mermaid
+---
+title: Before
+---
+gitGraph
+  commit id: "A"
+  commit id: "B"
+  branch feature
+  checkout main
+  commit id: "C"
+  checkout feature
+  commit id: "D"
+  commit id: "E"
 ```
-Before:         A--B--C        main
-                    \
-                     D--E      feature
 
-Merge:          A--B--C------M feature   (M joins both histories)
-                    \       /
-                     D--E--
+```mermaid
+---
+title: "Merge: M joins both histories"
+---
+gitGraph
+  commit id: "A"
+  commit id: "B"
+  branch feature
+  checkout main
+  commit id: "C"
+  checkout feature
+  commit id: "D"
+  commit id: "E"
+  merge main id: "M"
+```
 
-Rebase:         A--B--C        main
-                       \
-                        D'--E' feature   (D, E replayed, new hashes)
+```mermaid
+---
+title: "Rebase: D, E replayed, new hashes"
+---
+gitGraph
+  commit id: "A"
+  commit id: "B"
+  commit id: "C"
+  branch feature
+  commit id: "D'"
+  commit id: "E'"
 ```
 
 Merging creates a merge commit that joins two histories and preserves exactly what happened. Rebasing replays your commits on top of the latest main, producing new commit hashes and a linear history.

@@ -12,20 +12,19 @@ The fix is to stop doing slow work inside the request. Accept the job, put it in
 
 A **message queue** is a buffer between something that produces work and something that consumes it.
 
-```
-                     request/response (fast, < 100 ms)
-  Client ----POST /exports----> API ----enqueue----> [ Queue ] 
-     ^                           |                      |
-     |<---- 202 Accepted --------+                      | pull
-     |      { jobId }                                   v
-     |                                          +--------------+
-     |                                          |  Worker pool |  (separate processes)
-     |                                          +--------------+
-     |                                                 |
-     |                                                 v
-     |                                       Postgres / S3 / email
-     |
-     +----GET /jobs/:id (poll) or websocket/email notification
+```mermaid
+flowchart LR
+  subgraph rr["request/response (fast, #lt; 100 ms)"]
+    C([Client])
+    API[API]
+  end
+  C -- "POST /exports" --> API
+  API -- "202 Accepted { jobId }" --> C
+  API -- enqueue --> Q{{Queue}}
+  Q -- pull --> W["Worker pool (separate processes)"]
+  W --> D[("Postgres / S3 / email")]
+  C -. "GET /jobs/:id (poll)" .-> API
+  W -. "or websocket/email notification" .-> C
 ```
 
 What this buys you:
@@ -158,10 +157,12 @@ For permanent failures, do not burn retries. BullMQ lets you throw an `Unrecover
 
 A job that has exhausted all its retries needs somewhere to go other than silently disappearing. That place is a **dead-letter queue (DLQ)**: a holding area for failed jobs that a human (or alert) must look at.
 
-```
-[ main queue ] --fail--> retry 1..N --still failing--> [ dead-letter queue ] --> alert + dashboard
-                                                               |
-                                                     fix bug, then replay
+```mermaid
+flowchart LR
+  M{{main queue}} -- fail --> R["retry 1..N"]
+  R -- "still failing" --> D{{dead-letter queue}}
+  D --> A["alert + dashboard"]
+  D -. "fix bug, then replay" .-> M
 ```
 
 In SQS and RabbitMQ the DLQ is a separate queue you configure. In BullMQ, the "failed" set plays this role: jobs stay there with their error and stack trace until you retry or remove them. Either way, the rules are:

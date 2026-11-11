@@ -8,17 +8,22 @@ Most web developers treat the network as a black box between `fetch()` and the r
 
 Here is what happens when the browser loads `https://app.acme-erp.com/invoices` on a cold start:
 
-```
-Browser                DNS resolver        CDN / LB edge            Origin (Node)
-   |  1. DNS query  ------->|                    |                        |
-   |<------- A/AAAA record -|                    |                        |
-   |  2. TCP SYN  -------------------------------->|                        |
-   |<---------------------------------- SYN-ACK ---|                        |
-   |  ACK + 3. TLS ClientHello ------------------->|                        |
-   |<------------------- ServerHello, cert, Finished|                        |
-   |  4. HTTP GET /invoices ---------------------->|  5. (pooled conn) ---->|
-   |                                              |<------- 200 + body ----|
-   |<------------------------------- 200 + body ---|                        |
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant D as DNS resolver
+  participant E as CDN / LB edge
+  participant O as Origin (Node)
+  B->>D: 1. DNS query
+  D-->>B: A/AAAA record
+  B->>E: 2. TCP SYN
+  E-->>B: SYN-ACK
+  B->>E: ACK + 3. TLS ClientHello
+  E-->>B: ServerHello, cert, Finished
+  B->>E: 4. HTTP GET /invoices
+  E->>O: 5. (pooled conn)
+  O-->>E: 200 + body
+  E-->>B: 200 + body
 ```
 
 Count the round trips (RTT) before the first byte of the response arrives:
@@ -137,15 +142,12 @@ const [inv, lines2] = await Promise.all([
 
 ## Proxies, load balancers and CDNs
 
-```
-           +---------+      +-------------------+      +-----------+
-client --> |  CDN    | ---> |  Load balancer    | ---> |  Node x3  | --> Postgres
-           | (edge)  |      |  (L7, TLS term.)  |      |  (app)    |
-           +---------+      +-------------------+      +-----------+
-     caches static/      routes by host/path,        your code
-     cacheable GETs,     health checks, spreads
-     terminates TLS      load, idle timeouts
-     near the user
+```mermaid
+flowchart LR
+  C([client]) --> CDN["CDN (edge)<br/>caches static/cacheable GETs,<br/>terminates TLS near the user"]
+  CDN --> LB["Load balancer (L7, TLS term.)<br/>routes by host/path, health checks,<br/>spreads load, idle timeouts"]
+  LB --> N["Node x3 (app)<br/>your code"]
+  N --> PG[(Postgres)]
 ```
 
 - A **forward proxy** sits in front of clients (corporate egress). A **reverse proxy** sits in front of servers (nginx, Envoy, your cloud LB).

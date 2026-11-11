@@ -177,8 +177,8 @@ export function Board({ boardId, title, problemSlug, className = "h-[70vh]" }: P
         <ToolButton onClick={exportScene} icon="download" label=".excalidraw" title="Export the editable scene file" />
         <ToolButton onClick={clearBoard} icon="trash" label="Clear" title="Clear the board" />
         <span className="ml-auto pr-1 text-[0.7rem] text-subtle">
-          {saveState === "saved" && "Saved locally"}
-          {saveState === "failed" && <span className="text-danger">Not saved: storage full (remove large images)</span>}
+          {saveState === "saved" && "Saved"}
+          {saveState === "failed" && <span className="text-danger">Not saved</span>}
         </span>
         <ToolButton
           onClick={() => setFull((f) => !f)}

@@ -24,13 +24,23 @@ Two facts make this dangerous:
 1. **Most `ALTER TABLE` variants take `ACCESS EXCLUSIVE`**, even when the work is metadata-only and takes a millisecond. Adding a nullable column, dropping a column, renaming, setting a default: all need the strongest lock briefly.
 2. **Lock requests queue in order.** A waiting `ACCESS EXCLUSIVE` request blocks every later request that conflicts with it, which is all of them.
 
-```
-time ->
-report SELECT     [==== holds ACCESS SHARE for 4 min ===================]
-ALTER TABLE            [waiting for ACCESS EXCLUSIVE ...................][x]
-API SELECT                 [blocked behind ALTER .........................]
-API INSERT                    [blocked ...................................]
-pool exhausted -> 502s
+```mermaid
+sequenceDiagram
+  participant R as report SELECT
+  participant DB as Postgres lock queue
+  participant M as ALTER TABLE
+  participant API as API SELECT / INSERT
+  R->>DB: acquire ACCESS SHARE
+  Note over R,DB: holds ACCESS SHARE for 4 min
+  M->>DB: request ACCESS EXCLUSIVE
+  Note over DB,M: waiting for ACCESS EXCLUSIVE
+  API->>DB: SELECT
+  Note over DB,API: blocked behind ALTER
+  API->>DB: INSERT
+  Note over DB,API: blocked
+  Note over API: pool exhausted → 502s
+  R->>DB: report finishes, releases ACCESS SHARE
+  DB-->>M: ACCESS EXCLUSIVE granted, ALTER runs
 ```
 
 You can see this live with `pg_blocking_pids()`:
@@ -178,17 +188,14 @@ ALTER TABLE invoices ADD CONSTRAINT invoices_tenant_number_uq
 
 Phase 4 sketched expand/contract for `customer_id` to `account_id`. Here is the database side in full, with what each step locks.
 
-```
-Step  Release  Migration / code                                Lock / risk
-1     R1       ADD COLUMN account_id uuid (nullable)           ACCESS EXCLUSIVE, ms
-               trigger copies customer_id -> account_id          (lock_timeout!)
-               on INSERT/UPDATE
-2     job      backfill in batches                             row locks only
-3     job      CHECK NOT VALID + VALIDATE, then SET NOT NULL   online scan
-               FK NOT VALID + VALIDATE
-               CREATE INDEX CONCURRENTLY on account_id         online
-4     R2       code reads and writes account_id only           none
-5     R3       drop trigger, DROP COLUMN customer_id           ACCESS EXCLUSIVE, ms
+```mermaid
+flowchart TD
+  S1["Step 1 · R1<br/>ADD COLUMN account_id uuid (nullable)<br/>trigger copies customer_id → account_id on INSERT/UPDATE<br/>lock: ACCESS EXCLUSIVE, ms (lock_timeout!)"]
+  S2["Step 2 · job<br/>backfill in batches<br/>lock: row locks only"]
+  S3["Step 3 · job<br/>CHECK NOT VALID + VALIDATE, then SET NOT NULL (online scan)<br/>FK NOT VALID + VALIDATE<br/>CREATE INDEX CONCURRENTLY on account_id (online)"]
+  S4["Step 4 · R2<br/>code reads and writes account_id only<br/>lock: none"]
+  S5["Step 5 · R3<br/>drop trigger, DROP COLUMN customer_id<br/>lock: ACCESS EXCLUSIVE, ms"]
+  S1 --> S2 --> S3 --> S4 --> S5
 ```
 
 A trigger instead of dual writes in application code means every writer is covered, including the admin script someone runs at midnight:
