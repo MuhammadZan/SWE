@@ -1,6 +1,6 @@
 ## Scenario
 
-You are building the backend for a live auction feature inside a B2B procurement SaaS. Buyers bid up on lots during timed events: each new bid must beat the current highest bid. When a popular event opens or its final minute approaches, thousands of users refresh the lot page and fire bids within seconds. Today's prototype is a single Express server writing bids straight to Postgres. In a rehearsal with 300 users it oversold, showed stale leaders, and fell over.
+You are building the backend for a live auction feature inside a B2B procurement SaaS. Buyers bid up on lots during timed events: each new bid must beat the current highest bid. When a popular event opens or its final minute approaches, thousands of users refresh the lot page and fire bids within seconds. Today's prototype is a single Express server writing bids straight to Postgres. In a rehearsal with 300 users it accepted bids that did not beat the current price, showed stale leaders, and fell over.
 
 Your task: design and build a backend that absorbs **5,000 requests per second** of mixed traffic while keeping **p95 latency under 200 ms**, with **zero incorrect auction outcomes**, and prove it with a reproducible load test. You may instead build a seat/slot reservation engine (event seats, warehouse dock slots, appointment booking) with the same targets; the concurrency problem is the same.
 
@@ -26,7 +26,8 @@ Your task: design and build a backend that absorbs **5,000 requests per second**
 4. **Horizontal app tier:** at least 2 stateless API instances behind a load balancer (Nginx or HAProxy in Compose), with connection pooling sized deliberately.
 5. **Protection:** per-user rate limiting on bids, returning `429` with `Retry-After`.
 6. **Load test:** a k6 script using arrival-rate executors that models the read/write mix and hot-lot skew, with thresholds for p95 under 200 ms and error rate under 1%.
-7. **Correctness verifier:** a script that runs after the load test and asserts no lot ended with a bid that violates its rules (no accepted bid lower than a previous accepted bid, leader equals highest accepted bid, every accepted bid has exactly one row).
+7. **Correctness verifier:** a script that runs after the load test and asserts no lot ended with a bid that violates its rules: within each lot, accepted bids in acceptance order are strictly increasing (each beats the previous highest by at least the minimum increment, if you have one); no bid was accepted after the lot's end time; the lot's current price and leader equal its highest accepted bid; and every accepted bid has exactly one row.
+8. **Automated tests** (Vitest or `node:test`, runnable with `npm test`) against real Postgres and Redis in Docker: unit tests for bid validation rules (too low, equal to current price, after end time, rate-limited); a concurrency test that fires at least 200 simultaneous bids at one lot with `Promise.all` and asserts the final leader is the highest accepted amount, every accepted bid beat the one before it and every lower or equal bid got 409; a test that the same concurrency test still passes after `FLUSHALL` on Redis; and an idempotency test that running a side-effect job twice sends one notification. The verifier logic from step 7 should be a function these tests reuse.
 
 ## What to draw
 
@@ -35,7 +36,7 @@ Before coding, draw the target architecture on the whiteboard; after load testin
 ## Constraints
 
 - No synchronous external calls (email, webhooks) in the bid request path.
-- Every Redis key has a TTL, except data deliberately stored as source of truth (justify any).
+- Every cache and rate-limit key in Redis has a TTL. BullMQ manages its own queue keys; any other key without a TTL must be justified in the README (Postgres, not Redis, is the source of truth for bids).
 - The bid endpoint must remain correct if Redis is flushed mid-test.
 - Report numbers honestly: if you do not reach 5,000 req/s on your hardware, document the highest sustained rate meeting the latency target and identify the bottleneck.
 
@@ -43,6 +44,7 @@ Before coding, draw the target architecture on the whiteboard; after load testin
 
 - The k6 run passes its thresholds at your target rate for at least 5 minutes. Commit the summary output.
 - The correctness verifier passes after the run, with zero violations.
+- `npm test` passes, including the concurrent-bid test, before any load test is run.
 - Run the test once with caching disabled and once enabled; report the difference in p95 and DB CPU.
 - Kill one API instance mid-test: the error rate spike is brief and the system recovers.
 - Flush Redis mid-test: latency spikes then recovers, and the verifier still passes.

@@ -8,7 +8,7 @@ export const phase: PhaseMeta = {
   objective:
     "Transition from single-file or loosely coupled scripts into predictable, enterprise-ready application layers.",
   overview:
-    "You already know how to make features work. This phase is about making them stay workable: where code goes, what it is allowed to depend on, and how to keep business rules like invoicing, stock reservation and tenant isolation independent of the frameworks and databases you happen to use today.\n\nYou will learn the Dependency Rule behind layered, hexagonal and clean architecture, apply the same thinking to the frontend through design tokens and typed component libraries, and practice the three tools that make it real in TypeScript: SOLID principles, dependency injection with a composition root, and the repository pattern with units of work.\n\nThe phase ends with the Modular ERP Core capstone, where you prove your boundaries are real by swapping the entire persistence layer from PostgreSQL to MongoDB by changing a single configuration value.",
+    "You already know how to make features work. This phase is about making them stay workable: where code goes, what it is allowed to depend on, and how to keep business rules like invoicing, stock reservation and tenant isolation independent of the frameworks and databases you happen to use today.\n\nYou will learn the Dependency Rule behind layered, hexagonal and clean architecture, apply the same thinking to the frontend through design tokens and typed component libraries, and practice the three tools that make it real in TypeScript: SOLID principles, dependency injection with a composition root, and the repository pattern with units of work, plus the testing habits (in-memory fakes and repository contract suites) that prove those boundaries work.\n\nThe phase ends with the Modular ERP Core capstone, where you prove your boundaries are real by swapping the entire persistence layer from PostgreSQL to MongoDB by changing a single configuration value.",
   lessons: [
     {
       slug: "layered-clean-architecture",
@@ -342,7 +342,7 @@ export const phase: PhaseMeta = {
         },
         {
           question:
-            "Under load, tenant A occasionally sees tenant B's purchase orders. The InvoiceService singleton has a setTenant(tenantId) method called by middleware before each request. What is the root cause?",
+            "Under load, tenant A occasionally sees tenant B's purchase orders. The PurchaseOrderService singleton has a setTenant(tenantId) method called by middleware before each request. What is the root cause?",
           options: [
             "Postgres connection pooling",
             "Request-scoped state stored on a process-wide singleton, so concurrent requests overwrite each other's tenant",
@@ -408,6 +408,110 @@ export const phase: PhaseMeta = {
           label: "Mocks Aren't Stubs (Martin Fowler)",
           url: "https://martinfowler.com/articles/mocksArentStubs.html",
           kind: "web",
+        },
+      ],
+    },
+    {
+      slug: "testing-from-day-one",
+      title: "Testing From Day One: Fakes, Contracts and Fast Feedback",
+      summary:
+        "Set up Vitest in a TypeScript project, test use cases with in-memory fakes injected through constructors, and keep those fakes honest with a contract suite shared by every repository implementation.",
+      minutes: 35,
+      keyTakeaways: [
+        "Layered code with injected ports is what makes testing cheap: a use-case test is plain TypeScript with in-memory fakes and no database.",
+        "Vitest runs TypeScript directly but does not type-check, so run tsc --noEmit as a separate script and in CI.",
+        "Prefer hand-written fakes that implement the real port interfaces, and assert on outcomes rather than on which methods were called.",
+        "A contract test suite is a function that takes a factory; running it against the in-memory and the real repositories proves they are substitutable.",
+        "Test domain invariants, use-case orchestration, tenant scoping and mapping; skip framework behavior and trivial getters.",
+        "Keep the unit suite under a couple of seconds: no I/O, injected Clock and IdGenerator, fresh fakes per test, and a separate integration project for the database.",
+      ],
+      quiz: [
+        {
+          question:
+            "Your unit tests for CreateInvoice all pass using InMemoryInvoiceRepository, yet production leaked an invoice across tenants. The Postgres repository's findById forgot the tenant filter. What would have caught this?",
+          options: [
+            "More unit tests for CreateInvoice",
+            "A repository contract suite, including a 'never returns another tenant's invoice' case, run against both the in-memory and Postgres implementations",
+            "Raising line coverage to 100%",
+            "Mocking the Postgres client in the use-case tests",
+          ],
+          answer: 1,
+          explanation:
+            "Use-case tests only exercise the fake, so they cannot detect a bug in the real adapter. A shared contract suite holds every implementation to the same behavior, including tenant isolation. Coverage and mocks of the client say nothing about the actual SQL.",
+        },
+        {
+          question:
+            "A teammate's test for IssueInvoice asserts expect(repo.save).toHaveBeenCalledTimes(1) and expect(numbers.next).toHaveBeenCalledWith('t1', 2026). A harmless refactor that saves after a validation step breaks it. What is the better approach?",
+          options: [
+            "Add more call-count assertions so the test is stricter",
+            "Assert on outcomes: load the invoice from the in-memory fake and check its status and number",
+            "Delete the test, since refactors break tests anyway",
+            "Switch from Vitest to Jest",
+          ],
+          answer: 1,
+          explanation:
+            "Interaction assertions couple the test to implementation steps. Checking the observable result through a stateful fake verifies the business behavior and survives refactoring.",
+        },
+        {
+          question:
+            "CI is green, but the build fails on deploy with a TypeScript error in a test helper. All tests ran under Vitest. Why did CI miss it?",
+          options: [
+            "Vitest only runs JavaScript files",
+            "Vitest transforms TypeScript without type-checking, so a separate tsc --noEmit step is needed",
+            "The test helper was not imported",
+            "Type errors only appear in production builds",
+          ],
+          answer: 1,
+          explanation:
+            "Vitest strips types with esbuild for speed. Code with type errors can still execute and pass. A separate typecheck script in CI closes that gap.",
+        },
+        {
+          question:
+            "Trial-expiry tests pass locally but fail in CI on the last day of each month. The domain code calls new Date() directly. What is the most robust fix?",
+          options: [
+            "Retry flaky tests automatically in CI",
+            "Inject a Clock port and pass a fixed clock in the tests",
+            "Run CI only in the middle of the month",
+            "Increase the test timeout",
+          ],
+          answer: 1,
+          explanation:
+            "Time is a hidden dependency. An injected clock makes the behavior deterministic. Retries hide the bug, and the timeout is unrelated.",
+        },
+        {
+          question:
+            "Your unit suite has grown to 90 seconds, and developers have stopped running it before pushing. Profiling shows most tests open a Postgres connection to seed fixtures. What change gives the biggest improvement?",
+          options: [
+            "Buy faster CI machines",
+            "Move business-rule tests onto in-memory fakes and keep database tests in a separate integration project covered by the repository contract suite",
+            "Run all tests in parallel against the same database",
+            "Remove the slowest tests",
+          ],
+          answer: 1,
+          explanation:
+            "Most business logic does not need a database to be tested. Moving it onto fakes makes the unit suite near-instant, while the contract suite and a few integration tests still verify the real adapter. Sharing one database in parallel usually makes tests flaky.",
+        },
+      ],
+      resources: [
+        {
+          label: "Vitest guide",
+          url: "https://vitest.dev/guide/",
+          kind: "docs",
+        },
+        {
+          label: "The Practical Test Pyramid (Ham Vocke, martinfowler.com)",
+          url: "https://martinfowler.com/articles/practical-test-pyramid.html",
+          kind: "web",
+        },
+        {
+          label: "Mocks Aren't Stubs (Martin Fowler)",
+          url: "https://martinfowler.com/articles/mocksArentStubs.html",
+          kind: "web",
+        },
+        {
+          label: "Testcontainers for Node.js",
+          url: "https://node.testcontainers.org/",
+          kind: "docs",
         },
       ],
     },
@@ -548,6 +652,7 @@ export const phase: PhaseMeta = {
         "Do the use-case tests read like business specifications rather than mock setups?",
         "Is the status-code behavior identical to the legacy handler for all four cases?",
         "Is the composition root the only place where concrete classes are constructed?",
+        "If two requests create the same email at the same moment, does a unique index still prevent the duplicate, and does that surface as a 409 rather than a 500?",
       ],
       stretchGoals: [
         "Add a dependency-cruiser config that fails CI when application/ imports infrastructure/.",
@@ -557,11 +662,11 @@ export const phase: PhaseMeta = {
       repoChecklist: [
         "README with setup and run instructions (docker compose up, migrate, seed, start, test commands)",
         "A short before/after section in the README listing the responsibilities you separated",
-        "Unit tests and at least one integration test, runnable with a single npm script each",
+        "Use-case unit tests (with fakes, no database) and at least one repository integration test, runnable with a single npm script each",
         "SQL migration or schema file plus a seed script",
         "Lint or dependency-cruiser config enforcing the layer boundary",
       ],
-      relatedLessons: ["repository-pattern", "dependency-injection", "layered-clean-architecture"],
+      relatedLessons: ["repository-pattern", "dependency-injection", "testing-from-day-one", "layered-clean-architecture"],
     },
     {
       slug: "design-tokens-component-library",
@@ -575,9 +680,9 @@ export const phase: PhaseMeta = {
         "Primitive and semantic token files exist; components reference only semantic tokens.",
         "No hex/rgb/hsl literals or raw px/rem values appear in src/components/**, enforced by an automated check that fails when one is added.",
         "Light, dark and one brand theme switch at runtime with a data-theme attribute and no component code changes.",
-        "Alert supports exactly four union-typed tones and uses role=alert for danger and role=status otherwise.",
+        "Alert supports exactly four union-typed tones and uses role=alert for danger and role=status otherwise, verified by a component test for each tone.",
         "Card is built with composition (Card.Header, Card.Body, Card.Footer) with token-driven padding and dividers.",
-        "Modal closes on Escape, traps focus while open, returns focus to the trigger, and sets aria-modal and aria-labelledby.",
+        "Modal closes on Escape, keeps focus inside while open, returns focus to the trigger, and sets aria-modal and aria-labelledby, with automated tests for Escape, onClose and focus return.",
         "All Alert foreground/background pairs meet WCAG AA 4.5:1 contrast in light and dark themes, with results documented.",
         "A demo page shows an ERP scenario (overdue invoice alert, stock valuation card, void invoice confirmation modal) with a theme switcher.",
       ],
@@ -585,8 +690,8 @@ export const phase: PhaseMeta = {
         "Write the semantic token names first, based on what the UI means (surface, text, border, danger, and so on), then map them to primitives.",
         "Generate or hand-write CSS variables for :root and [data-theme=dark]; your TS semantic module can just hold var(--...) strings for type safety.",
         "For the guard, a Vitest test that reads every file under src/components and asserts no match for a hex or px/rem regex is enough.",
-        "Native <dialog> with showModal() gives you Escape handling and inertness; you still need to store and restore focus to the trigger element.",
-        "Test the modal with Testing Library's userEvent.keyboard('{Escape}') and userEvent.tab(), asserting on document.activeElement.",
+        "Native <dialog> with showModal() gives you Escape handling and makes the rest of the page inert. Current browsers also restore focus on close, but store the trigger yourself and test it, because the trigger may re-render or the dialog may be closed by unmounting.",
+        "Test the modal with Testing Library's userEvent.keyboard('{Escape}') and userEvent.tab(), asserting on document.activeElement. jsdom does not implement HTMLDialogElement.showModal(), so stub showModal/close in your test setup or run these tests in a real browser (Vitest browser mode or Playwright).",
       ],
       rubric: [
         "If the brand's accent color changed tomorrow, how many files would you edit?",
@@ -607,7 +712,7 @@ export const phase: PhaseMeta = {
         "Component tests and the hardcoded-value guard, runnable with one npm script",
         "A contrast results table for the semantic color pairs in each theme",
       ],
-      relatedLessons: ["design-systems-tokens", "solid-principles"],
+      relatedLessons: ["design-systems-tokens", "solid-principles", "testing-from-day-one"],
     },
     {
       slug: "multi-tenant-erp-module-map",
@@ -667,18 +772,18 @@ export const phase: PhaseMeta = {
       requirements: [
         "Domain and application code import no infrastructure packages (pg, Prisma/Drizzle/Knex, mongodb/mongoose, express), enforced by an automated check in CI or a lint script.",
         "All business rules are implemented: reservations, gap-free per-tenant yearly invoice numbering, status transitions, and half-even rounded tax with no floating-point money.",
-        "Complete PostgreSQL and MongoDB adapters exist, each with its own Unit of Work, and pass the same parameterized contract test suite.",
+        "Complete PostgreSQL and MongoDB adapters exist, each with its own Unit of Work, and pass the same parameterized repository contract test suite, which also runs against the in-memory fakes used by the use-case tests.",
         "Switching providers requires only changing the PERSISTENCE configuration value; the end-to-end flow passes on both.",
         "IssueInvoice is atomic on both providers: a forced mid-operation failure leaves stock, reservations and invoice status unchanged.",
         "A concurrency test shows no overselling and unique, gap-free invoice numbers under parallel requests.",
         "Cross-tenant access by ID is rejected for reads and writes, verified by tests.",
-        "Use-case unit tests run against in-memory fakes in under 2 seconds without any database.",
+        "Every use case has unit tests (happy path plus at least one rule violation) that run against in-memory fakes injected through constructors, in under 2 seconds total, without any database.",
       ],
       hints: [
         "Build the domain and use cases first with in-memory repositories and a trivial in-memory UnitOfWork. Do not write any database code until the business tests pass.",
         "Model Money as integer minor units plus a currency, with explicit multiply and round-half-even helpers; test rounding edge cases like 0.005.",
         "Write the repository contract tests as a function that takes a factory (makeRepos) so the same suite runs against the in-memory, Postgres and Mongo implementations.",
-        "Gap-free numbering needs a per-tenant per-year counter row/document incremented inside the issuing transaction (SELECT ... FOR UPDATE in Postgres, findOneAndUpdate with $inc inside a session in Mongo).",
+        "Gap-free numbering needs a per-tenant per-year counter row/document incremented inside the issuing transaction (UPDATE ... RETURNING or SELECT ... FOR UPDATE in Postgres, findOneAndUpdate with $inc inside a session in Mongo). Postgres sequences are not gap-free, because nextval() is never rolled back.",
         "Mongo multi-document transactions require a replica set; run a single-node replica set in docker compose (mongod --replSet rs0 plus rs.initiate()).",
       ],
       rubric: [
@@ -698,7 +803,7 @@ export const phase: PhaseMeta = {
       repoChecklist: [
         "README with architecture overview, docker compose setup, and how to run the app and tests with each provider",
         "Exported architecture diagram (PNG or SVG) showing ports, both adapters and the composition root switch",
-        "Unit, contract (both providers), atomicity, concurrency and tenant-isolation tests, runnable via npm scripts",
+        "Use-case unit tests with in-memory fakes (npm test, no database), plus one repository contract suite run against in-memory, Postgres and Mongo, and atomicity, concurrency and tenant-isolation tests, each runnable via an npm script",
         "docker-compose.yml for Postgres and a Mongo replica set",
         "Boundary enforcement config (dependency-cruiser or ESLint) wired into a CI workflow or npm lint script",
         "A short ADR (architecture decision record) explaining key trade-offs",
@@ -707,6 +812,7 @@ export const phase: PhaseMeta = {
         "layered-clean-architecture",
         "repository-pattern",
         "dependency-injection",
+        "testing-from-day-one",
         "solid-principles",
       ],
     },

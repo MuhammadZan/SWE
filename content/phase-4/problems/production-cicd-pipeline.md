@@ -44,13 +44,14 @@ You may substitute a different domain if it has comparable money logic and a dat
 4. **Branch protection** on `main` requiring the CI checks and a pull request.
 5. **`release.yml`** on push to `main`: re-runs gates (or depends on them), builds and pushes an image tagged with the short git SHA to GHCR using `GITHUB_TOKEN`, deploys to staging, runs smoke tests, waits for approval on a `production` environment, deploys to production, verifies `/version` equals the new tag.
 6. **Zero-downtime deployment** to a real target: a VPS with Docker and a reverse proxy using blue-green, or a PaaS (Fly.io, Render, Railway, ECS) with rolling deploys and readiness checks. Demonstrate it with a curl loop showing no failed requests during a deploy.
-7. **Safe migrations**: a migration step that runs before the rollout, documented expand/contract policy, and at least one real expand/contract change carried out across multiple PRs in the repo history.
+7. **Safe migrations**: a migration step that runs before the rollout, documented expand/contract policy, and at least one real expand/contract change carried out across multiple PRs in the repo history. The Phase 5 lesson on zero-downtime schema migrations covers the database side in more depth if you have reached it.
 8. **Rollback**: a `workflow_dispatch` workflow (`rollback.yml`) that takes an image tag and redeploys it through the same deploy script.
 9. **Observability**: structured JSON logs with version and request ID, a request-duration histogram, and a written list of what you check in the 30 minutes after a deploy.
 
 ## Constraints
 
 - Production is deployed only from images built by the pipeline, never from a developer machine. The same image tag goes to staging and production.
+- Make the repository public (or use a paid plan): required reviewers on a `production` environment are not available for private repositories on the free plan.
 - No long-lived secrets in the repo. Deploy credentials live in GitHub environment secrets scoped to `staging` and `production`.
 - `concurrency` must prevent two production deploys running at once, and must never cancel an in-progress production deploy.
 - PR feedback time under 10 minutes.

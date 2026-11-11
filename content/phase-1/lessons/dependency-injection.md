@@ -118,6 +118,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaInventoryRepository } from "@/modules/inventory/infrastructure/prisma-inventory-repository";
 import { PrismaPurchaseOrderDrafts } from "@/modules/purchasing/infrastructure/prisma-po-drafts";
 import { SlackNotifier } from "@/modules/shared/infrastructure/slack-notifier";
+import { ConsoleNotifier } from "@/modules/shared/infrastructure/console-notifier";
 import { RecordShipment } from "@/modules/inventory/application/record-shipment";
 import { config } from "./config";
 

@@ -1,6 +1,7 @@
 import type { PhaseMeta } from "@/lib/types";
+import { interviewLessons, interviewProblems } from "./interview";
 
-export const phase: PhaseMeta = {
+const basePhase: PhaseMeta = {
   id: 2,
   slug: "performance",
   title: "Code Performance & Resource Scaling",
@@ -22,7 +23,7 @@ export const phase: PhaseMeta = {
         "Spreading an accumulator inside reduce copies it every iteration and turns linear code into O(n^2).",
         "Spending O(n) memory on a lookup structure to avoid O(n^2) time is almost always the right trade at ERP scale.",
         "Amortized O(1) operations like push and Map.set are cheap on average but occasionally resize, which can surface as latency spikes.",
-        "Big-O ignores I/O: count database and network round trips separately, because each costs a million times more than an in-memory operation.",
+        "Big-O ignores I/O: count database and network round trips separately, because each costs tens of thousands of times more than an in-memory operation.",
       ],
       quiz: [
         {
@@ -324,14 +325,14 @@ export const phase: PhaseMeta = {
           question:
             "An EXPLAIN ANALYZE shows: Seq Scan on invoices (rows=31877) with Rows Removed by Filter: 2968123, and Buffers: shared read=61210. What does this tell you?",
           options: [
-            "Postgres read about 3 million rows and roughly 478 MB from disk to keep about 1% of them, so a suitable index would likely help a lot",
+            "Postgres read about 3 million rows and roughly 478 MB from outside its buffer cache to keep about 1% of them, so a suitable index would likely help a lot",
             "The query is efficient because it returned 31,877 rows",
             "The cost numbers are in milliseconds and show the query took 61 seconds",
             "The table needs to be vacuumed because rows were removed",
           ],
           answer: 0,
           explanation:
-            "Rows Removed by Filter is wasted work: nearly all rows were read and discarded. 61,210 buffers of 8 KB is about 478 MB read from disk. 'Removed by filter' refers to filtering, not deletion, and buffers are pages, not milliseconds.",
+            "Rows Removed by Filter is wasted work: nearly all rows were read and discarded. 61,210 buffers of 8 KB is about 478 MB that was not already in shared_buffers (it came from the OS page cache or disk). 'Removed by filter' refers to filtering, not deletion, and buffers are pages, not milliseconds.",
         },
         {
           question:
@@ -591,13 +592,14 @@ export const phase: PhaseMeta = {
       estimatedHours: 4,
       needsDiagram: false,
       requirements: [
-        "matchNested and matchWithMap produce deeply equal output (same lines, same order) for n = 1,000, 5,000, 10,000, verified by an automated check before any timing.",
+        "matchNested and matchWithMap produce deeply equal output (same lines, same order) for n = 1,000, 5,000, 10,000, verified by an automated test suite (Vitest or node:test) that runs with npm test, and the benchmark also re-checks equality before any timing.",
         "matchWithMap builds the inventory Map exactly once, outside the product loop, and contains no nested loop over the data.",
         "At n = 10,000, matchWithMap's median runtime is at least 100x faster than matchNested's median.",
         "The benchmark uses performance.now(), at least 5 warm-up runs, and at least 10 timed runs for the Map version, and reports median and p95 for each n.",
         "Doubling n from 5,000 to 10,000 shows roughly 4x growth for the nested version and roughly 2x for the Map version, with any deviation explained in the README.",
         "The orphan report lists counts with unknown product IDs and products with no count, runs in O(n), and its totals match the generator's 2% and 1% injection rates.",
         "The multi-warehouse extension produces correct total on-hand per product when each product has 1 to 3 warehouse counts.",
+        "Automated tests cover the core logic on small hand-written fixtures: a product with no count gets onHand 0, an orphan count is reported, exact orphan totals for a seeded n = 1,000 dataset, and multi-warehouse sums for a product with 3 counts.",
       ],
       hints: [
         "Look at where the inner loop is: it searches the counts array once per product. What single structure would answer 'what is the count for product X?' without searching?",
@@ -623,6 +625,7 @@ export const phase: PhaseMeta = {
         "Before/after benchmark results table for every n, with machine specs and Node version.",
         "The seeded data generator, so results are reproducible.",
         "Separate source files for matchNested, matchWithMap, and the orphan report.",
+        "A test file (npm test) with the equivalence, orphan, and multi-warehouse tests, passing in CI or locally from a clean clone.",
         "A short written explanation of the complexity of each approach and the observed growth curve.",
       ],
       relatedLessons: ["big-o-notation", "arrays-vs-hash-maps", "measuring-performance"],
@@ -642,14 +645,14 @@ export const phase: PhaseMeta = {
         "All fixed routes return JSON deeply equal to the naive route's output for the same tenant, verified by an automated test.",
         "With 5 ms simulated latency per query, the naive route's p50 is at least 10x the JOIN route's p50, measured over 200 requests at 10 concurrent connections.",
         "The list query uses an index on invoices (tenant_id, issued_at DESC), confirmed by an EXPLAIN ANALYZE excerpt showing an Index Scan rather than a Seq Scan.",
-        "A regression test fails if any fixed route exceeds 3 queries.",
+        "An automated regression test (Vitest or node:test against a real seeded Postgres) asserts the naive route reports 101 queries, proving the counter works, and fails if any fixed route exceeds 3 queries.",
       ],
       hints: [
         "Start by logging. Count the queries for one request before changing any code, and look at which lines repeat.",
         "The repeated queries all have the shape 'fetch one row by customer id'. What single query could fetch all of them at once?",
         "For the batched route: collect unique customer IDs into a Set, run one WHERE id = ANY($1) query, and stitch with a Map. Do the same for billing addresses keyed by customer_id.",
         "For the JOIN route, join invoices to customers on customer_id and to addresses on customer_id with kind = 'billing' in the ON clause, so invoices without an address are not dropped if you use a LEFT JOIN.",
-        "For the query counter, store a mutable { count } object in AsyncLocalStorage at the start of each request and increment it from your ORM's query event or a wrapped pool.query.",
+        "For the query counter, store a mutable { count } object in AsyncLocalStorage at the start of each request and increment it from a wrapped pool.query or a Prisma client extension ($extends with a query hook). Prisma's $on('query') log event may not run inside the request's async context, so verify getStore() is defined there before relying on it.",
       ],
       rubric: [
         "Can I point to the exact log lines that prove the N+1 pattern and the exact lines that prove it is gone?",
@@ -688,7 +691,7 @@ export const phase: PhaseMeta = {
         "No more than 4 new indexes on invoices and 2 on invoice_lines, each annotated with the query it serves; every tenant-scoped index leads with tenant_id.",
         "Each of the three queries has written SQL and a drawn access path naming the expected scan type (Index Scan, Index Only Scan, Bitmap, or Seq Scan) and join strategy (Nested Loop, Hash Join, or Merge Join).",
         "The overdue list uses keyset pagination with a unique cursor on (due_date, id), and the design explains why page 200 costs about the same as page 1.",
-        "Each query has a numeric latency target (for example overdue list under 5 ms, revenue by month under 150 ms, top products under 500 ms) and an estimated rows-read count.",
+        "Each query has a numeric latency target (for example overdue list under 5 ms, revenue by month under 150 ms, top products for a one-month range under 500 ms) and an estimated rows-read count.",
         "The write-cost section lists how many indexes each table carries after the change and which are touched by invoice creation, a status change to paid, and an open_cents update.",
         "A fallback design (pre-aggregated table or materialized view) is given for at least one reporting query, with its freshness trade-off stated.",
       ],
@@ -731,11 +734,12 @@ export const phase: PhaseMeta = {
         "The seed script inserts exactly 1,000,000 transactions with the specified tenant skew, reproducibly from a fixed seed, and finishes in under 2 minutes using COPY or batched multi-row inserts.",
         "GET /tenants/:tenantId/transactions supports accountId, from, to, status, category, minAmount, limit (max 200), and an opaque keyset cursor, ordered by posted_at DESC, id DESC.",
         "The optimized version uses at most 4 secondary indexes on transactions, each justified in the README and shown in use by at least one saved EXPLAIN (ANALYZE, BUFFERS) plan.",
-        "Q1, Q2, Q3, and Q5 run in under 1 ms of database execution time at p50; Q4 under 5 ms; Q6 (summary) under 50 ms, measured over 200 runs each.",
-        "Page 200 (Q2) in the optimized version is within 2x of page 1's latency, while the naive OFFSET version shows at least 20x degradation.",
+        "Q1, Q2, Q3, and Q5 run in under 1 ms of database execution time at p50 (server-side, from EXPLAIN ANALYZE Execution Time or pg_stat_statements, not including the round trip); Q4 under 5 ms; Q6 (summary) under 50 ms, measured over 200 runs each.",
+        "Page 200 (Q2) in the optimized version is within 2x of page 1's latency, while an OFFSET variant running on the same indexes shows at least 20x degradation (the no-index naive version is a full scan on every page, so it cannot show this).",
         "Full HTTP p95 for Q1 to Q5 is under 20 ms with 10 concurrent connections, measured with autocannon or k6.",
         "Account names are included without N+1 queries: each list request executes at most 2 queries.",
         "Index cost is documented: total index size from pg_indexes_size and the time to insert 50,000 additional rows with and without the indexes.",
+        "Automated API tests (npm test, against a real Postgres seeded with a small deterministic fixture) cover each filter, limit defaulting to 50 and clamping at 200, invalid cursor and parameter handling (400), cursor pagination with no skipped or duplicated rows including ties on posted_at, and a query-count assertion of at most 2 per list request.",
       ],
       hints: [
         "Write down the six representative queries first and list the equality filters, range filters, and sort for each. Your indexes fall out of that list.",
@@ -764,7 +768,7 @@ export const phase: PhaseMeta = {
         "A plans/ folder with EXPLAIN (ANALYZE, BUFFERS) output for each query before and after optimization.",
         "Migration files for schema and indexes, plus the seed script with its fixed random seed.",
         "A section justifying each index's column order and documenting its write and storage cost.",
-        "Tests for cursor pagination correctness (no skipped or duplicated rows across pages).",
+        "An automated test suite (npm test) for the API: filter correctness, limit validation, cursor pagination with no skipped or duplicated rows across pages (including tied posted_at values), and query count per request.",
       ],
       relatedLessons: [
         "big-o-notation",
@@ -786,5 +790,19 @@ export const phase: PhaseMeta = {
       url: "https://neetcode.io",
       kind: "interactive",
     },
+  ],
+};
+
+// Interview-patterns track (content/phase-2/interview.ts): lessons follow the DSA toolkit,
+// the drills problem sits before the capstone.
+const toolkitAt = basePhase.lessons.findIndex((l) => l.slug === "practical-dsa-toolkit") + 1;
+
+export const phase: PhaseMeta = {
+  ...basePhase,
+  lessons: [...basePhase.lessons.slice(0, toolkitAt), ...interviewLessons, ...basePhase.lessons.slice(toolkitAt)],
+  problems: [
+    ...basePhase.problems.filter((p) => p.kind !== "capstone"),
+    ...interviewProblems,
+    ...basePhase.problems.filter((p) => p.kind === "capstone"),
   ],
 };

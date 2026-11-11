@@ -58,22 +58,22 @@ jobs:
       tag: ${{ steps.vars.outputs.tag }}
       image: ${{ steps.vars.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: vars
         run: |
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"   # lowercase
           echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -104,6 +104,7 @@ GitHub **environments** (Settings > Environments) let you attach protection rule
       name: staging
       url: https://staging.billing.example.com
     steps:
+      - uses: actions/checkout@v7          # deploy.sh lives in the repo; each job starts empty
       - run: ./scripts/deploy.sh staging "${{ needs.image.outputs.tag }}"
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -118,12 +119,13 @@ GitHub **environments** (Settings > Environments) let you attach protection rule
       group: deploy-production
       cancel-in-progress: false   # never cancel a deploy halfway
     steps:
+      - uses: actions/checkout@v7          # deploy.sh lives in the repo; each job starts empty
       - run: ./scripts/deploy.sh production "${{ needs.image.outputs.tag }}"
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
 ```
 
-On the `production` environment configure: required reviewers (someone clicks "Approve"), deployment branch restriction to `main` only, and production-only secrets. The `concurrency` group ensures two deploys never run at once, and that a deploy in progress is not cancelled by a newer push.
+On the `production` environment configure: required reviewers (someone clicks "Approve"), deployment branch restriction to `main` only, and production-only secrets. Required reviewers are available on public repositories on every plan; for private repositories they need a paid GitHub plan (Team or Enterprise, depending on the rule), so check yours before designing around them. The `concurrency` group ensures two deploys never run at once, and that a deploy in progress is not cancelled by a newer push.
 
 ## Deployment strategies
 
@@ -243,16 +245,20 @@ Example: rename `invoices.customer_id` to `invoices.account_id`. Doing it in one
 Expand/contract splits it into backward-compatible steps, each its own deploy:
 
 ```
- Release 1 (EXPAND)   add column account_id (nullable)
+ Release 1 (EXPAND)   migration: add column account_id (nullable)
                       code writes BOTH customer_id and account_id, reads customer_id
  Backfill             UPDATE invoices SET account_id = customer_id
                       WHERE account_id IS NULL  -- in batches of e.g. 5,000
- Release 2 (SWITCH)   code reads account_id, still writes both
+ Release 2 (SWITCH)   migration: make account_id NOT NULL (safely, see below),
+                      and DROP NOT NULL on customer_id so it may be omitted later
+                      code reads account_id, still writes both
  Release 3 (CONTRACT) code stops writing customer_id
- Release 4 (CLEANUP)  migration: add NOT NULL on account_id, drop customer_id
+ Release 4 (CLEANUP)  migration: drop customer_id
 ```
 
-At every point, the currently running version and the next version both work against the schema. Any single release can be rolled back.
+The order of the `NOT NULL` changes matters: if `customer_id` were still `NOT NULL` when Release 3 stops writing it, every insert would fail. At every point, the currently running version and the next version both work against the schema, so any single release can be rolled back.
+
+This section is the deployment-pipeline view of expand/contract. The Phase 5 lesson *Zero-Downtime Schema Migrations* covers the database side in depth: lock levels per DDL statement, safe `NOT NULL` and foreign-key patterns, batched backfills, and migration linting.
 
 Rules of thumb for Postgres:
 
@@ -260,7 +266,7 @@ Rules of thumb for Postgres:
 |---|---|
 | Add a nullable column | Rename or drop a column or table |
 | Add a column with a constant default (Postgres 11+) | Change a column type |
-| Add a new table | Add `NOT NULL` to an existing column with data |
+| Add a new table | Add `NOT NULL` to an existing column with data (use a `CHECK ... NOT VALID` constraint, `VALIDATE` it, then `SET NOT NULL`, which Postgres 12+ can do without a full scan) |
 | `CREATE INDEX CONCURRENTLY` | Plain `CREATE INDEX` on a large table (locks writes) |
 | Add a constraint `NOT VALID`, then `VALIDATE CONSTRAINT` | Add a foreign key or check constraint validated in one go |
 

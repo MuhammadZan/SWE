@@ -26,6 +26,7 @@ You will move image processing out of the request lifecycle. The endpoint stores
 4. Retry policy: at least 4 attempts with exponential backoff. Corrupt or unsupported files must fail permanently without retries.
 5. A failed-jobs view or script that lists jobs which exhausted retries (your dead-letter queue) with their error, and a way to replay one.
 6. Graceful shutdown: the worker finishes in-flight jobs on SIGTERM.
+7. Automated tests for the core logic, runnable with `npm test`: the job handler is idempotent (running it twice for the same image leaves exactly three variant objects and one `ready` record); an invalid file throws `UnrecoverableError` and is not retried; a transient storage failure is retried; the upload endpoint returns 202 with a payload under 1 KB and never contains file bytes; and the status endpoint returns 404 for another tenant's image. Test the handler as a plain function with the storage layer injected, so most tests need no queue at all.
 
 ## What to draw
 
@@ -46,3 +47,4 @@ Draw the full asynchronous flow on the whiteboard and include the exported diagr
 - `kill -9` the worker mid-batch, restart it, and confirm every image still reaches `ready` with exactly three variants (no duplicates, no orphans).
 - Upload a text file renamed to `.jpg`: it reaches `failed` after one attempt, not after four.
 - Make storage writes fail randomly 30% of the time: jobs retry with growing delays and eventually succeed.
+- `npm test` passes, including the run-twice idempotency test and the permanent-failure test.

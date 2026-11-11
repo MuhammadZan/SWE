@@ -34,8 +34,9 @@ export function Dashboard({ catalog, blurbs }: { catalog: Catalog; blurbs: Blurb
             {started ? "Welcome back." : "From shipping apps to engineering systems."}
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-muted">
-            Four phases: architecture, performance, system design, and delivery. Read the lesson, check yourself with
-            the quiz, then build the real thing and submit it as a public GitHub repo.
+            Six phases, from engineering foundations through architecture, performance, system design, delivery and
+            production databases. Read the lesson, check yourself with the quiz, build the real thing, submit it as a
+            public GitHub repo, then grade it against the solution notes.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             {next && (
@@ -85,7 +86,7 @@ export function Dashboard({ catalog, blurbs }: { catalog: Catalog; blurbs: Blurb
 
       {/* Phases */}
       <section className="mt-12">
-        <h2 className="mb-4 text-sm font-medium tracking-wider text-subtle uppercase">The four phases</h2>
+        <h2 className="mb-4 text-sm font-medium tracking-wider text-subtle uppercase">The phases</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {catalog.map((p) => {
             const s = phaseStats(p, state);

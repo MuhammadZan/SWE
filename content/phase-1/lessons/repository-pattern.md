@@ -93,10 +93,12 @@ export class InviteUser {
 
 ```ts
 // users/infrastructure/prisma-user-repository.ts
-import type { PrismaClient, User as UserRow } from "@prisma/client";
+import type { Prisma, User as UserRow } from "@prisma/client";
 
 export class PrismaUserRepository implements UserRepository {
-  constructor(private db: PrismaClient) {}
+  // TransactionClient accepts both the root PrismaClient and the `tx` client
+  // handed out by $transaction, so the same class works inside a Unit of Work
+  constructor(private db: Prisma.TransactionClient) {}
 
   async findByEmail(tenantId: string, email: Email) {
     const row = await this.db.user.findFirst({ where: { tenantId, email: email.value, deletedAt: null } });
@@ -225,7 +227,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
         +------------- COMMIT ----------------------------------+
 ```
 
-The use case still never imports Prisma. In tests, an `InMemoryUnitOfWork` simply calls `work(fakeRepos)`.
+The use case still never imports Prisma. For this to compile, each Prisma repository's constructor must accept `Prisma.TransactionClient` (as `PrismaUserRepository` does above), not `PrismaClient`. Interactive transactions also have a default timeout of 5 seconds, so keep slow work such as emails and HTTP calls outside `run`. In tests, an `InMemoryUnitOfWork` simply calls `work(fakeRepos)`.
 
 **Concurrency note:** two users issuing invoices that draw on the same stock at the same time can still oversell under default isolation. Add optimistic locking (a `version` column checked in `save`) or `SELECT ... FOR UPDATE` inside the inventory repository's transaction-bound implementation. The domain stays the same, and the repository enforces the guarantee.
 

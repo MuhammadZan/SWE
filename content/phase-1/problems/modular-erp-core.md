@@ -47,6 +47,7 @@ test/
 The composition root is the heart of the swap:
 
 ```ts
+// top-level await needs an ES module build; otherwise wrap this in an async buildContainer()
 const persistence = config.persistence === "mongo"
   ? await makeMongoPersistence(config.mongoUrl)       // returns { uow, invoiceQueries, ... }
   : await makePostgresPersistence(config.postgresUrl);
@@ -77,9 +78,9 @@ export const container = {
 
 ## How to verify
 
-- **Contract tests:** one repository/UoW test suite, parameterized by provider, runs green against both Postgres and Mongo.
-- **Use-case tests:** run against in-memory fakes in under 2 seconds total, with no database.
-- **Atomicity test:** force the ledger/number step to throw during `IssueInvoice` and assert that stock, reservations and invoice status are unchanged, on both providers.
-- **Concurrency test:** fire 20 parallel `AddInvoiceLine` calls against a SKU with stock for 10. Exactly 10 succeed. Fire parallel `IssueInvoice` calls for one tenant and confirm the numbers are gap-free and unique.
+- **Contract tests:** one repository/UoW test suite, written as a function that takes a factory, runs green against the in-memory fakes, Postgres and Mongo. If the fakes fail it, your use-case tests are testing something that doesn't exist in production.
+- **Use-case tests:** every use case has unit tests (happy path plus at least one rule violation) against in-memory fakes injected through constructors, finishing in under 2 seconds total with no database.
+- **Atomicity test:** force a step late in `IssueInvoice` to throw (for example a failing number sequence or a final invoice save that throws) and assert that stock, reservations and invoice status are unchanged, on both providers.
+- **Concurrency test:** fire 20 parallel `AddInvoiceLine` calls of qty 1 against a SKU with stock for 10. Exactly 10 succeed. Fire parallel `IssueInvoice` calls for one tenant and confirm the numbers are gap-free and unique. In Postgres this needs row locks or a conditional `UPDATE ... WHERE on_hand - reserved >= $qty`. In Mongo, concurrent transactions touching the same document abort with a `TransientTransactionError` write conflict, so run them with `session.withTransaction()` (which retries) or retry in your Unit of Work.
 - **Isolation test:** tenant A can't read, issue or pay tenant B's invoice by ID.
-- **The swap:** run the full end-to-end script (create, add lines, issue, pay) with `PERSISTENCE=postgres`, then with `PERSISTENCE=mongo`. Then run `git diff` and confirm that only the config value changed.
+- **The swap:** run the full end-to-end script (create, add lines, issue, pay) with `PERSISTENCE=postgres`, then with `PERSISTENCE=mongo`. Then run `git diff` and confirm that nothing but the config value changed (or nothing at all, if you set it through an environment variable).

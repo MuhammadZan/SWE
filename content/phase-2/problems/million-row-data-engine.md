@@ -6,7 +6,7 @@ This capstone ties the whole phase together. You will generate a realistic 1,000
 
 ## Starting point
 
-Postgres 15+ locally (Docker is fine). Node 20+ with TypeScript. Any HTTP framework (Fastify, Express, Next.js route handlers, Hono).
+Postgres 16+ locally (Docker is fine). Node 20+ with TypeScript. Any HTTP framework (Fastify, Express, Next.js route handlers, Hono).
 
 Schema to start with (you may extend it, but keep the column names):
 
@@ -52,7 +52,7 @@ Seeding requirements:
    - `limit` (default 50, max 200)
    - `cursor` (opaque keyset cursor)
 
-   Results ordered by `posted_at DESC, id DESC`. Response includes `data`, `nextCursor`, and a `meta` object with `queryMs` (database execution time measured around the query).
+   Results ordered by `posted_at DESC, id DESC`. Response includes `data`, `nextCursor`, and a `meta` object with `queryMs` (time measured in Node around the query call; this includes the round trip, so it is always a bit higher than the server-side execution time). Invalid parameters or a malformed cursor return 400, not 500.
 
 2. **`GET /tenants/:tenantId/transactions/summary`** returning, for the same filters, total debits, total credits, and the top 5 counterparties by absolute amount. Decide which parts happen in SQL and which (if any) in memory, and justify it.
 
@@ -65,12 +65,14 @@ Seeding requirements:
    - Account names joined in a way that does not produce N+1 queries.
    - If you do any in-memory work (for example, merging, top-k, or grouping), use appropriate structures (Map, heap) rather than nested loops or full sorts.
 
-5. **A benchmark harness** (`npm run bench`) that, for a fixed set of 6 representative queries (see below), runs each 200 times and reports p50, p95, p99 of both database execution time and full HTTP latency, for the naive and optimized versions.
+5. **Automated API tests** (`npm test`, against a real Postgres loaded with a small deterministic fixture, not the million-row seed): one test per filter, `limit` defaulting to 50 and clamping at 200, 400 responses for a malformed cursor or bad parameters, a walk through every page asserting no skipped or duplicated rows (include several rows with identical `posted_at` in the fixture), and an assertion that one list request runs at most 2 queries.
+
+6. **A benchmark harness** (`npm run bench`) that, for a fixed set of 6 representative queries (see below), runs each 200 times and reports p50, p95, p99 of both database execution time and full HTTP latency, for the naive and optimized versions.
 
 Representative queries:
 
 - Q1: tenant 1, default filters, first page.
-- Q2: tenant 1, page 200 (follow cursors, or OFFSET 9,950 for the naive version).
+- Q2: tenant 1, page 200 (follow cursors, or OFFSET 9,950 for the naive version and for an OFFSET variant on the optimized indexes).
 - Q3: tenant 1, one account, last 30 days.
 - Q4: tenant 1, category `software`, last 12 months, `minAmount` 100000.
 - Q5: tenant 37 (small tenant), default filters.
@@ -87,7 +89,8 @@ Representative queries:
 
 - Run `ANALYZE transactions;` after seeding and after creating indexes.
 - For each representative query, save the `EXPLAIN (ANALYZE, BUFFERS)` output before and after optimization in a `plans/` folder.
+- Measure database execution time server-side: the `Execution Time` line of `EXPLAIN (ANALYZE)`, or `mean_exec_time` from `pg_stat_statements`. Report it separately from `queryMs` and HTTP latency.
 - Targets for the optimized version on a typical laptop: Q1, Q2, Q3, Q5 database execution time under 1 ms at p50; Q4 under 5 ms at p50; Q6 under 50 ms at p50. Full HTTP p95 under 20 ms for Q1 to Q5 with 10 concurrent connections.
-- Q2 must show that page 200 costs about the same as page 1 in the optimized version, and dramatically more in the naive version.
+- Q2 must show that page 200 costs about the same as page 1 in the optimized version, and dramatically more with OFFSET. Compare against an OFFSET variant that uses the same indexes: the no-index naive version does a full scan and top-N sort on every page, so page 1 and page 200 are both slow and the OFFSET penalty is hidden.
 - Record the cost of your indexes: total index size (`pg_indexes_size('transactions')`) and the time to insert 50,000 additional rows before and after creating them.
 - Put a before/after table for all 6 queries in the README, with machine specs and Postgres version.

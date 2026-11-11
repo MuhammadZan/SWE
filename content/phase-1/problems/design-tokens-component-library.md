@@ -59,6 +59,6 @@ export const space = { 0: "0", 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24p
 - Run the token guard. It passes. Then temporarily add `color: "#ff0000"` to `Alert` and confirm the guard fails.
 - Toggle light, dark and brand on the demo page. Every component restyles correctly without a reload.
 - Change one primitive (for example `red.600`) and confirm that every danger-toned element updates.
-- Keyboard-test the modal: Tab cycles inside it, Shift+Tab wraps, Escape closes it, and focus returns to the "Void invoice" button.
-- Component tests (Testing Library) cover the ARIA role per tone, modal closing on Escape, and `onClose` being called.
+- Keyboard-test the modal: Tab and Shift+Tab never reach page content behind it, Escape closes it, and focus returns to the "Void invoice" button. (With native `<dialog>`, Tab may briefly move to the browser's own UI after the last control; that is expected, because the page behind is inert. A hand-written trap wraps from last to first instead.)
+- Component tests (Vitest + Testing Library) cover the ARIA role per tone, modal closing on Escape, `onClose` being called, and focus returning to the trigger. Note that jsdom does not implement `showModal()`, so stub it in your test setup or run these tests in a real browser.
 - `tsc --noEmit` rejects `<Alert tone="error" />`.

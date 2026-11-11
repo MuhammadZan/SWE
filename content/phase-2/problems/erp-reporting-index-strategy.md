@@ -48,6 +48,6 @@ A design document plus a diagram (use the whiteboard) that covers:
 
 This is primarily a design problem, but every claim should be testable. In your write-up:
 
-- For each of the three queries, state an expected execution time target (for example, overdue list page under 5 ms, revenue by month under 150 ms, top products under 500 ms) and the expected number of rows read.
+- For each of the three queries, state an expected execution time target (for example, overdue list page under 5 ms, revenue by month under 150 ms, top products for a one-month range under 500 ms) and the expected number of rows read. Be honest where a target needs the fallback: aggregating a full year of lines for the largest tenant (millions of rows) will not fit in 500 ms from indexes alone.
 - Optionally, but strongly recommended: seed a scaled-down version (400,000 invoices, 2.8 million lines) and run `EXPLAIN (ANALYZE, BUFFERS)` for each query before and after creating your indexes. Paste the key lines (scan node, rows, buffers, execution time) into the document and note where reality differed from your prediction.
 - Include a short "what would change my mind" section: which observed plan or metric would make you revise the design (for example, the planner choosing a Bitmap Heap Scan with millions of heap fetches for query 3).

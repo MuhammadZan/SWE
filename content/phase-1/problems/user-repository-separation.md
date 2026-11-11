@@ -55,13 +55,14 @@ Before refactoring, write down every responsibility this handler has. You should
 4. **A `CreateUser` use case** that receives its dependencies through the constructor: the repository, a `SeatPolicy` (or `SubscriptionReader`) port, and a `PasswordHasher` port.
 5. **A thin route handler** that validates the request shape (zod or similar), calls the use case, maps domain errors to HTTP status codes, and returns a **DTO**, never the raw row.
 6. **A composition root** (`container.ts`) where the concrete implementations are wired up.
-7. **Tests:** unit tests for `CreateUser` using an `InMemoryUserRepository` and fakes, plus at least one integration test for the real repository against a real database (Docker Postgres or Testcontainers).
+7. **Tests:** unit tests for `CreateUser` using an `InMemoryUserRepository` and fakes injected through the constructor (success, invalid email, duplicate email, seat limit reached, and a check that the result carries no password hash), plus at least one integration test for the real repository against a real database (Docker Postgres or Testcontainers). The "Testing From Day One" lesson shows the Vitest setup.
 
 ## Constraints
 
 - No SQL strings or ORM imports outside the infrastructure folder. Enforce it with an ESLint `no-restricted-imports` rule or dependency-cruiser.
 - The response body must never include `password_hash`. Prove it with a test.
 - The behavior must stay the same as the legacy handler: same status codes for the same inputs (400, 409, 402, 201).
+- The duplicate check is a read followed by a write, so two concurrent requests can both pass it (the legacy handler has this race too). Add a partial unique index on `(tenant_id, email) WHERE deleted_at IS NULL` and have the repository translate a unique violation (Postgres error code `23505`) into the same `ConflictError`.
 - No DI framework. Wire everything by hand.
 - Write the code yourself. Use AI only to look up documentation.
 

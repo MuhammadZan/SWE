@@ -1,26 +1,30 @@
 // Server-side content loader. Reads typed phase metadata plus markdown bodies from /content.
 import fs from "node:fs";
 import path from "node:path";
+import { phase as phase0 } from "@/content/phase-0";
 import { phase as phase1 } from "@/content/phase-1";
 import { phase as phase2 } from "@/content/phase-2";
 import { phase as phase3 } from "@/content/phase-3";
 import { phase as phase4 } from "@/content/phase-4";
+import { phase as phase5 } from "@/content/phase-5";
 import type { LessonMeta, PhaseMeta, ProblemMeta } from "./types";
 import type { Catalog } from "./catalog";
 import { slugify } from "./slug";
 
-export const phases: PhaseMeta[] = [phase1, phase2, phase3, phase4];
+export const phases: PhaseMeta[] = [phase0, phase1, phase2, phase3, phase4, phase5];
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
-function readMarkdown(phaseId: number, kind: "lessons" | "problems", slug: string) {
+function readMarkdown(phaseId: number, kind: "lessons" | "problems" | "solutions", slug: string) {
   const file = path.join(CONTENT_DIR, `phase-${phaseId}`, kind, `${slug}.md`);
   try {
     return fs.readFileSync(file, "utf8");
   } catch {
-    return "_Content for this section is not written yet._";
+    return null;
   }
 }
+
+const MISSING = "_Content for this section is not written yet._";
 
 export function getPhase(slug: string) {
   return phases.find((p) => p.slug === slug);
@@ -53,7 +57,7 @@ export function getLesson(slug: string):
       return {
         phase,
         lesson: phase.lessons[index],
-        body: readMarkdown(phase.id, "lessons", slug),
+        body: readMarkdown(phase.id, "lessons", slug) ?? MISSING,
         index,
         ...neighbours(`/lessons/${slug}`),
       };
@@ -62,12 +66,25 @@ export function getLesson(slug: string):
 }
 
 export function getProblem(slug: string):
-  | { phase: PhaseMeta; problem: ProblemMeta; brief: string; prev: Step | null; next: Step | null }
+  | {
+      phase: PhaseMeta;
+      problem: ProblemMeta;
+      brief: string;
+      solution: string | null;
+      prev: Step | null;
+      next: Step | null;
+    }
   | undefined {
   for (const phase of phases) {
     const problem = phase.problems.find((p) => p.slug === slug);
     if (problem) {
-      return { phase, problem, brief: readMarkdown(phase.id, "problems", slug), ...neighbours(`/problems/${slug}`) };
+      return {
+        phase,
+        problem,
+        brief: readMarkdown(phase.id, "problems", slug) ?? MISSING,
+        solution: readMarkdown(phase.id, "solutions", slug),
+        ...neighbours(`/problems/${slug}`),
+      };
     }
   }
 }

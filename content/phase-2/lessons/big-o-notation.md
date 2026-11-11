@@ -194,7 +194,7 @@ This is the big one for web developers. A rough sense of scale:
 | Postgres query to a managed DB in another AZ | ~2 to 10 milliseconds |
 | Call a third-party HTTP API | ~50 to 500 milliseconds |
 
-An `O(n)` loop that makes one database query per iteration is "linear" in Big-O, but each unit of work costs a million times more than an in-memory operation. Fifty iterations of a 5 ms query is 250 ms. Meanwhile, an `O(n log n)` sort of the same 50 items in memory takes microseconds.
+An `O(n)` loop that makes one database query per iteration is "linear" in Big-O, but each unit of work costs tens of thousands of times more than an in-memory operation (about 1 ms versus about 50 ns). Fifty iterations of a 5 ms query is 250 ms. Meanwhile, an `O(n log n)` sort of the same 50 items in memory takes microseconds.
 
 So when you analyze a function, count **two things separately**: CPU operations, and round trips (database queries, network calls, disk reads). Round trips almost always matter more until `n` is in the hundreds of thousands.
 

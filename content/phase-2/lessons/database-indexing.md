@@ -55,17 +55,21 @@ LIMIT 50;
 Before indexing:
 
 ```
-Limit  (cost=98213.11..98213.24 rows=50 width=40) (actual time=1842.3..1842.4 rows=50 loops=1)
+Limit  (cost=108440.12..108440.25 rows=50 width=40) (actual time=1842.311..1842.326 rows=50 loops=1)
   Buffers: shared hit=1204 read=61210
-  ->  Sort  (cost=98213.11..98290.40 rows=30915 width=40) (actual time=1842.3..1842.3 rows=50 loops=1)
+  ->  Sort  (cost=108440.12..108517.41 rows=30915 width=40) (actual time=1842.309..1842.315 rows=50 loops=1)
         Sort Key: issued_at DESC
         Sort Method: top-N heapsort  Memory: 31kB
-        ->  Seq Scan on invoices  (cost=0.00..97186.00 rows=30915 width=40) (actual time=0.03..1831.9 rows=31877 loops=1)
-              Filter: ((tenant_id = 't_7') AND (status = 'overdue'))
+        Buffers: shared hit=1204 read=61210
+        ->  Seq Scan on invoices  (cost=0.00..107414.00 rows=30915 width=40) (actual time=0.031..1831.904 rows=31877 loops=1)
+              Filter: ((tenant_id = 't_7'::text) AND (status = 'overdue'::text))
               Rows Removed by Filter: 2968123
-Planning Time: 0.2 ms
-Execution Time: 1842.6 ms
+              Buffers: shared hit=1204 read=61210
+Planning Time: 0.214 ms
+Execution Time: 1842.598 ms
 ```
+
+(Simplified: with default settings, a table this size would usually get a `Gather` node over a `Parallel Seq Scan` with 2 workers. The lesson is the same: every row is read.)
 
 How to read it:
 
@@ -75,7 +79,7 @@ How to read it:
 - **`rows=` estimated vs actual.** A big mismatch (estimated 10, actual 300,000) means stale or insufficient statistics and is a common cause of bad plans. Run `ANALYZE invoices;`.
 - **`loops=`** multiply actual time and rows by this for the node's total.
 - **`Rows Removed by Filter`** is wasted work. 2.97 million rows read to keep 31,877.
-- **`Buffers: shared hit / read`** are 8 KB pages from cache vs disk. `read=61210` is about 478 MB pulled from disk.
+- **`Buffers: shared hit / read`** are 8 KB pages found in Postgres's shared buffer cache vs pages it had to fetch from outside it (the OS page cache or the disk). `read=61210` is about 478 MB that was not already cached by Postgres.
 
 The scan node types you will see:
 
@@ -98,10 +102,11 @@ After:
 ```
 Limit  (cost=0.56..48.12 rows=50 width=40) (actual time=0.041..0.162 rows=50 loops=1)
   Buffers: shared hit=54
-  ->  Index Scan using invoices_tenant_status_issued_idx on invoices  (actual time=0.040..0.155 rows=50 loops=1)
-        Index Cond: ((tenant_id = 't_7') AND (status = 'overdue'))
-Planning Time: 0.3 ms
-Execution Time: 0.19 ms
+  ->  Index Scan using invoices_tenant_status_issued_idx on invoices  (cost=0.56..29403.71 rows=30915 width=40) (actual time=0.040..0.155 rows=50 loops=1)
+        Index Cond: ((tenant_id = 't_7'::text) AND (status = 'overdue'::text))
+        Buffers: shared hit=54
+Planning Time: 0.312 ms
+Execution Time: 0.191 ms
 ```
 
 No sort node (rows come out of the index already ordered), no filter, 54 pages instead of 62,000. 1842 ms to 0.19 ms.
@@ -196,7 +201,7 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 
 - **Low selectivity.** If the query matches 40% of rows, a sequential scan is genuinely cheaper than millions of random index lookups. The planner is right.
 - **A function on the column.** `WHERE lower(email) = $1` cannot use an index on `email`. Create an expression index: `CREATE INDEX ON customers (lower(email));`
-- **Type mismatch.** Comparing a `bigint` column to a `numeric` parameter, or a `timestamptz` to text, can prevent index use.
+- **Type mismatch.** Comparing a `bigint` column to a `numeric` parameter (for example `WHERE id = 42.0`, or a driver sending a decimal) makes Postgres cast the column side to `numeric`, and the B-tree on the raw column no longer matches. Pass parameters with the column's type.
 - **Leading wildcard.** `LIKE '%acme%'` cannot use a B-tree. Use a trigram (`pg_trgm`) GIN index for that.
 - **Wrong column order** for the query shape.
 - **Stale statistics** making the planner misjudge row counts. `ANALYZE` the table.

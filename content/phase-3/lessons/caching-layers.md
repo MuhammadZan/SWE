@@ -58,7 +58,7 @@ async function markInvoicePaid(tenantId: string, invoiceId: string) {
 }
 ```
 
-Why delete instead of updating the cache on write? Because two concurrent writers can update the DB in order A, B but update the cache in order B, A, leaving the cache permanently wrong. Deleting means the next reader rebuilds from the source of truth.
+Why delete instead of updating the cache on write? Because two concurrent writers can update the DB in order A, B but update the cache in order B, A, leaving the cache permanently wrong. Deleting means the next reader rebuilds from the source of truth. A narrow race still remains (a slow reader can write back a value it loaded just before the update), which is one more reason every key also gets a TTL.
 
 Cache-aside is the default choice for most SaaS apps. Only data someone actually requests gets cached, and a Redis outage degrades performance rather than correctness.
 
@@ -146,13 +146,24 @@ Three fixes, often combined:
 Only one request recomputes; the others wait briefly and retry the cache.
 
 ```ts
+import { randomUUID } from "node:crypto";
+
+// Compare-and-delete: remove the lock only if it still holds our token.
+const RELEASE_LOCK = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end`;
+
 async function getWithLock<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T> {
   const hit = await redis.get(key);
   if (hit) return JSON.parse(hit) as T;
 
   const lockKey = `${key}:lock`;
+  const token = randomUUID(); // unique per request, so we only ever release our own lock
   // NX = only set if not exists, PX = lock auto-expires in 5 s if we crash
-  const gotLock = await redis.set(lockKey, "1", "PX", 5000, "NX");
+  const gotLock = await redis.set(lockKey, token, "PX", 5000, "NX");
 
   if (gotLock) {
     try {
@@ -160,7 +171,8 @@ async function getWithLock<T>(key: string, ttl: number, load: () => Promise<T>):
       await redis.set(key, JSON.stringify(value), "EX", ttl);
       return value;
     } finally {
-      await redis.del(lockKey);
+      // NOT a plain DEL: if load() outlasted the 5 s TTL, another request may own the lock now
+      await redis.eval(RELEASE_LOCK, 1, lockKey, token);
     }
   }
 
@@ -173,6 +185,8 @@ async function getWithLock<T>(key: string, ttl: number, load: () => Promise<T>):
   return load(); // fallback: give up waiting
 }
 ```
+
+Why the token and the Lua script? A plain `DEL` in `finally` is a classic bug. If `load()` takes 6 s, the 5 s lock has already expired and a second request has taken it; your `DEL` would delete *their* lock and let a third request in. Storing a random token and deleting atomically only when the value still matches (GET and DEL in one Lua script, so nothing can run in between) closes that hole. This is the same release pattern used for distributed locks in the concurrency lesson. Here the lock only saves duplicate work: if it ever fails, the worst case is two loads of the same data, never wrong data.
 
 ### 2. TTL jitter
 
@@ -196,13 +210,14 @@ Redis is not just a string key-value store. Picking the right type often removes
 | Hash | HGET, HSET, HINCRBY | A product's fields; update one field without rewriting the blob |
 | List | LPUSH, RPOP, LRANGE | Simple queues, recent activity feed (LTRIM to cap size) |
 | Set | SADD, SISMEMBER | Online users, feature flag membership, dedup of processed IDs |
-| Sorted set | ZADD, ZRANGE, ZREVRANGE | Leaderboards, highest bids, sliding-window rate limits |
+| Sorted set | ZADD, ZINCRBY, ZRANGE (with REV) | Leaderboards, highest bids, sliding-window rate limits |
 | Stream | XADD, XREADGROUP | Durable event log with consumer groups |
 
 ```ts
 // Leaderboard of top sales reps this month
 await redis.zincrby(`tenant:${t}:sales:2026-11`, amountCents, repId);
-const top10 = await redis.zrevrange(`tenant:${t}:sales:2026-11`, 0, 9, "WITHSCORES");
+// ZRANGE ... REV replaces ZREVRANGE (deprecated since Redis 6.2)
+const top10 = await redis.zrange(`tenant:${t}:sales:2026-11`, 0, 9, "REV", "WITHSCORES");
 ```
 
 Also know about **eviction**. When Redis hits `maxmemory`, it evicts keys according to `maxmemory-policy`. For a pure cache use `allkeys-lru` (evict least recently used). The default, `noeviction`, makes writes fail when memory is full, which is right for a queue and wrong for a cache. Many teams run separate Redis instances for cache and for queues for exactly this reason.
@@ -218,7 +233,7 @@ Cache-Control: private, max-age=0, must-revalidate      # user-specific dashboar
 Cache-Control: no-store                                 # anything with secrets
 ```
 
-- `max-age` applies to browsers; `s-maxage` applies to shared caches like CDNs.
+- `max-age` applies to every cache, browser and CDN alike; `s-maxage` overrides it for shared caches like CDNs.
 - `public` allows CDNs to cache; `private` means only the user's browser may store it.
 - `ETag` plus `If-None-Match` lets the server answer `304 Not Modified` with no body, saving bandwidth even when content must be revalidated.
 

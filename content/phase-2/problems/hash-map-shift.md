@@ -30,10 +30,15 @@ export function generate(n: number, seed = 42) {
     name: `Product ${i}`,
     unitCostCents: 100 + Math.floor(rand() * 50_000),
   }));
-  // Shuffle so the counts are not in the same order as products
-  const counts: InventoryCount[] = products
-    .map((p) => ({ productId: p.id, warehouseId: "WH-1", onHand: Math.floor(rand() * 500) }))
-    .sort(() => rand() - 0.5);
+  const counts: InventoryCount[] = products.map((p) => ({
+    productId: p.id, warehouseId: "WH-1", onHand: Math.floor(rand() * 500),
+  }));
+  // Fisher-Yates shuffle so the counts are not in the same order as products.
+  // (Do not use sort(() => rand() - 0.5): it is biased and its output depends on the engine's sort.)
+  for (let i = counts.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [counts[i], counts[j]] = [counts[j], counts[i]];
+  }
   // Simulate real-world mess: 2% of products have no count, 1% of counts reference unknown products
   counts.splice(0, Math.floor(n * 0.02));
   for (let i = 0; i < n * 0.01; i++) counts.push({ productId: `P-X${i}`, warehouseId: "WH-1", onHand: 1 });
@@ -64,7 +69,12 @@ export function matchNested(products: Product[], counts: InventoryCount[]): Stoc
 1. **`matchNested`** exactly as above (your baseline).
 2. **`matchWithMap`**: pre-index the inventory counts into a `Map<string, InventoryCount>` keyed by `productId`, then make a single pass over products. Same output, same order.
 3. **An orphan report**: list inventory counts whose `productId` does not exist in the catalog, and products with no count. This must also be `O(n)`.
-4. **A correctness check**: a function that asserts both implementations produce deeply equal output for the same input.
+4. **Automated tests** (`npm test`, with Vitest or `node:test`):
+   - an equivalence test asserting both implementations produce deeply equal output for seeded data at n = 1,000, 5,000, and 10,000;
+   - small hand-written fixtures (three or four products) covering a product with no count (`onHand` 0), an orphan count, and the order of output lines;
+   - orphan report totals for a seeded n = 1,000 dataset (exactly 20 products without counts and 10 orphan counts);
+   - a multi-warehouse test where one product has 3 counts and its total is their sum.
+   The benchmark script should also re-run the equivalence check before timing.
 5. **A benchmark script** (`npm run bench`) that runs both implementations at n = 1,000, 5,000, 10,000, and 50,000 (skip nested at 50,000 if it exceeds 60 seconds, and say so), with warm-up runs and multiple timed runs, printing median and p95.
 6. **A multi-warehouse extension**: change the generator so each product has counts in 1 to 3 warehouses, and produce total on-hand per product. Decide between a `Map<string, number>` that sums and a `Map<string, InventoryCount[]>` that groups, and justify it in the README.
 

@@ -18,6 +18,7 @@ export type ProblemProgress = {
   checks: Record<string, boolean>; // requirement / rubric checkboxes keyed "req-0", "rub-2"
   hintsRevealed: number;
   submissions: Submission[]; // newest last
+  solutionPeeked?: boolean; // opened the solution notes before submitting
 };
 
 export type ProgressState = {

@@ -27,7 +27,8 @@ Mature systems layer tokens so that each tier has one reason to change:
 ```
   Primitive (raw palette)      Semantic (meaning)           Component (specific use)
   ---------------------        ------------------           ------------------------
-  red-600   = #dc2626   --->   color.danger.fg     --->     alert.danger.border
+  red-800   = #991b1b   --->   color.danger.fg     --->     alert.danger.text
+  red-600   = #dc2626   --->   color.danger.border --->     alert.danger.border
   red-50    = #fef2f2   --->   color.danger.bg     --->     alert.danger.background
   space-4   = 16px      --->   space.inset.md      --->     card.padding
   radius-2  = 8px       --->   radius.surface      --->     modal.radius
@@ -192,7 +193,7 @@ Each sub-component reads its padding and borders from tokens, so a Card is consi
 
 Centralizing components also centralizes accessibility. Fix it once and it's fixed everywhere:
 
-- `Modal`: focus trap, `aria-modal`, `role="dialog"`, labelled by its title, Escape closes it, focus returns to the trigger. The native `<dialog>` element or Radix UI handle most of this.
+- `Modal`: focus trap, `aria-modal`, `role="dialog"`, labelled by its title, Escape closes it, focus returns to the trigger. The native `<dialog>` element opened with `showModal()` (which makes the rest of the page inert) or Radix UI handle most of this, but test focus return yourself.
 - `Alert`: `role="alert"` for urgent messages and `role="status"` for polite ones.
 - Color tokens: semantic pairs (`danger.fg` on `danger.bg`) should be checked against WCAG AA (4.5:1 for body text) *once, in the token file*, not on every screen.
 

@@ -98,7 +98,7 @@ app.get("/readyz", async (_req, res) => {
 
 Be careful making liveness depend on the database: if Postgres blips, every instance fails its check, the load balancer removes all of them, and a 2-second database hiccup becomes a full outage.
 
-A minimal Nginx config:
+A minimal Nginx config. Note that open-source Nginx only does **passive** health checks (`max_fails`: it stops routing to a server after real requests to it fail); active polling of `/healthz` needs HAProxy, a cloud load balancer or NGINX Plus.
 
 ```nginx
 upstream api {
@@ -110,7 +110,7 @@ upstream api {
 }
 
 server {
-  listen 443 ssl;
+  listen 80;   # in production: listen 443 ssl; plus ssl_certificate and ssl_certificate_key
   location / {
     proxy_pass http://api;
     proxy_http_version 1.1;

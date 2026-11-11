@@ -4,6 +4,8 @@ Your unit tests are green. Your in-memory fake repository returns invoices perfe
 
 Unit tests prove your logic is right *given its inputs*. Integration tests prove the pieces actually connect: your SQL against the real Postgres version, your constraints, your transactions, your HTTP layer serialising responses, your migrations applying cleanly. For a SaaS or ERP backend, most of the bugs that wake people up live in exactly those seams.
 
+Since Phase 1 you have been writing contract tests: one shared suite that both your in-memory fake repository and the real one must pass. Until now the "real" side was often skipped or run by hand. This lesson makes it a first-class, automated part of the suite: a real Postgres, started by the tests themselves, with factories, isolation and HTTP-level tests on top. Point your existing contract suite at the Postgres-backed repository and it becomes your first set of integration tests.
+
 ## What counts as an integration test
 
 An integration test exercises your code together with at least one real dependency that you would otherwise fake. In practice for a Node/Postgres backend this means:
@@ -12,7 +14,7 @@ An integration test exercises your code together with at least one real dependen
 - Service tests: business logic plus repository plus a real database, with only third-party HTTP APIs (Stripe, tax providers, email) replaced.
 - HTTP route tests: send a request into your app (in-process, no real network port required) and assert on status codes, bodies, and database state.
 
-The key word is *real*. SQLite is not Postgres. It has different types, different locking, no `jsonb`, no `ON CONFLICT ... DO UPDATE` in the same shape, and different behaviour for case-sensitive comparisons. Testing against a different engine than production gives you false confidence.
+The key word is *real*. SQLite is not Postgres. It uses dynamic typing (unless you opt into `STRICT` tables), a single-writer locking model, its own JSON functions instead of Postgres `jsonb` operators and GIN indexes, has no arrays, enums or `SELECT ... FOR UPDATE SKIP LOCKED`, and treats `LIKE` as case-insensitive for ASCII by default. Testing against a different engine than production gives you false confidence.
 
 ## The test pyramid and the testing trophy
 
@@ -50,7 +52,7 @@ A sensible SaaS split: a dense layer of unit tests on the money and rules code, 
 Testcontainers starts a throwaway Docker container from your test code and gives you its connection details. Each test run gets a clean database with the same Postgres major version as production.
 
 ```bash
-npm install -D @testcontainers/postgresql
+npm install -D @testcontainers/postgresql @types/pg
 npm install pg
 ```
 
@@ -87,6 +89,8 @@ export default defineConfig({
   },
 });
 ```
+
+Setting `process.env.DATABASE_URL` in global setup works because Vitest starts its workers after global setup finishes and they inherit the environment. If you prefer an explicit channel, global setup can call `project.provide("databaseUrl", url)` and tests read it with `inject("databaseUrl")`.
 
 Pros: zero manual setup, works on any machine with Docker, version pinned in code. Cons: needs Docker available (fine on GitHub Actions Ubuntu runners), adds a few seconds of startup.
 

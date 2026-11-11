@@ -35,6 +35,8 @@ CREATE TABLE invoices (
 );
 ```
 
+Add `CREATE UNIQUE INDEX addresses_one_billing ON addresses (customer_id) WHERE kind = 'billing';` so each customer has at most one billing address. Without it, `findFirst` with no `orderBy` may return any of several billing addresses and your equality tests become flaky.
+
 Seed 2,000 customers (each with a billing and a shipping address) and 100,000 invoices across 5 tenants. Write the seed script yourself, using batched multi-row inserts or `COPY`, not one insert per row.
 
 The naive endpoint (adapt to your ORM):
@@ -52,7 +54,8 @@ app.get("/invoices", async (req, res) => {
     const billing = await prisma.address.findFirst({
       where: { customerId: inv.customerId, kind: "billing" },
     });
-    rows.push({ number: inv.number, total: inv.totalCents, customer: customer!.name, billing });
+    // total_cents is bigint: Prisma returns a BigInt, which res.json cannot serialize
+    rows.push({ number: inv.number, total: Number(inv.totalCents), customer: customer!.name, billing });
   }
   res.json(rows);
 });
@@ -67,7 +70,7 @@ app.get("/invoices", async (req, res) => {
    - `/invoices/eager`: ORM eager loading (`include`/`select` in Prisma, `relations` or `leftJoinAndSelect` in TypeORM).
    - `/invoices/batched`: the original list query plus one `WHERE id = ANY(...)` query for customers and one for billing addresses, stitched with Maps.
 4. **Simulated network latency.** Run your app against Postgres through a latency proxy (for example `toxiproxy` adding 5 ms) or, more simply, wrap the query function with a 5 ms delay in a "remote mode" flag. This shows what N+1 does across a real network.
-5. **A regression test** that calls each fixed route and asserts the query count is at most 3, and that the response data is identical to the naive route's data.
+5. **An automated regression test** (Vitest or `node:test`, against a real seeded Postgres, not mocks) that asserts the naive route reports 101 queries (proving the counter itself works), asserts each fixed route reports at most 3, and asserts the response data is identical to the naive route's data, including for a customer with no billing address.
 
 ## Constraints
 

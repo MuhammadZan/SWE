@@ -26,7 +26,9 @@ Every login and every full page refresh pays that cost. At 9:00 a.m. it is the s
 2. An invalidation function `invalidateTenantMetadata(tenantId)` that is called whenever tenant settings change.
 3. A small HTTP endpoint or CLI script that exercises both paths and logs `HIT` or `MISS` plus duration for each call.
 4. A benchmark script that measures latency for 100 sequential calls cold and warm, and prints both.
-5. A stampede test: delete the key, fire 200 concurrent calls, count how many times the slow loader actually ran. Then add a single-flight mechanism (a Redis `SET NX PX` lock or an in-process promise map) and show the count drops to 1 (or 1 per process).
+5. A stampede test: delete the key, fire 200 concurrent calls, count how many times the slow loader actually ran. Then add a single-flight mechanism (a Redis `SET NX PX` lock holding a unique token and released with a compare-and-delete Lua script, or an in-process promise map) and show the count drops to 1 (or 1 per process).
+
+6. Automated tests (Vitest or `node:test`) for the core logic, runnable with `npm test`: a miss calls the loader and writes the key with a TTL between 1 and 60; a second call is a hit and does not call the loader; after invalidation the next call is a miss; after the TTL passes the next call is a miss (use a short TTL in the test or inject the TTL, rather than sleeping 60 s); with Redis unavailable the function still returns loader data; and 200 concurrent misses with single-flight call the loader once. Run them against a real Redis (Docker) rather than a mock, so you test real `SET ... EX` and `NX` behavior.
 
 Optionally draw the read path and invalidation path on the whiteboard; it is a useful habit even for a small exercise.
 
@@ -46,5 +48,6 @@ Optionally draw the read path and invalidation path on the whiteboard; it is a u
 - `redis-cli INFO stats` shows `keyspace_hits` and `keyspace_misses`; compute and report the hit ratio from your benchmark run.
 - Stopping the Redis container mid-run does not crash your script; calls slow down to DB speed and keep returning correct data.
 - The stampede test output shows loader-call counts before and after adding single-flight.
+- `npm test` passes and covers hit, miss, TTL expiry, invalidation, Redis-down fallback and single-flight.
 
 Commit a short README with your measured numbers in a table: cold p50/p95, warm p50/p95, hit ratio, and stampede loader count before and after.

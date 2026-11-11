@@ -48,6 +48,8 @@ export const logger = pino({
 });
 ```
 
+Redaction paths are exact: `*.password` matches one level deep (`{ user: { password } }`), not `{ body: { user: { password } } }`. List the shapes you actually log, and add a unit test that logs a sample object and asserts the secret is not in the output.
+
 Bake the version into the image so every log line says which release produced it:
 
 ```dockerfile
@@ -56,7 +58,7 @@ ENV APP_VERSION=$APP_VERSION
 ```
 
 ```yaml
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           build-args: APP_VERSION=${{ steps.vars.outputs.tag }}   # e.g. sha-3f9c2a1, same as the image tag
 ```
@@ -170,6 +172,8 @@ From the Docker and CD lessons:
 A useful addition for humans and deploy scripts is a version endpoint:
 
 ```ts
+const STARTED_AT = new Date().toISOString();
+
 app.get("/version", async () => ({
   version: process.env.APP_VERSION,
   startedAt: STARTED_AT,

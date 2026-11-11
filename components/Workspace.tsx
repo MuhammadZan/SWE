@@ -7,7 +7,7 @@ import { checkGitHubRepo, parseGitHubUrl, progress, useProgress } from "@/lib/pr
 import { LazyBoard } from "./board/LazyBoard";
 import { Icon } from "./Icon";
 
-type Tab = "brief" | "whiteboard" | "submit";
+type Tab = "brief" | "whiteboard" | "submit" | "solution";
 
 // The active tab lives in the URL hash (#whiteboard, #submit) so it survives reloads and can be linked to.
 function subscribeHash(cb: () => void) {
@@ -19,7 +19,7 @@ function useTab(): Tab {
     subscribeHash,
     () => {
       const h = window.location.hash.slice(1);
-      return h === "whiteboard" || h === "submit" ? h : "brief";
+      return h === "whiteboard" || h === "submit" || h === "solution" ? h : "brief";
     },
     () => "brief",
   );
@@ -28,10 +28,12 @@ function useTab(): Tab {
 export function Workspace({
   problem,
   related,
+  solution,
   children,
 }: {
   problem: ProblemMeta;
   related: { slug: string; title: string }[];
+  solution: React.ReactNode | null;
   children: React.ReactNode;
 }) {
   const tab = useTab();
@@ -50,6 +52,16 @@ export function Workspace({
     { id: "brief", label: "Brief", icon: "book" },
     { id: "whiteboard", label: "Whiteboard", icon: "pen", badge: problem.needsDiagram ? "required" : undefined },
     { id: "submit", label: "Submit", icon: "github", badge: p?.status === "submitted" ? "done" : undefined },
+    ...(solution
+      ? [
+          {
+            id: "solution" as const,
+            label: "Solution notes",
+            icon: "target" as const,
+            badge: p?.status === "submitted" || p?.solutionPeeked ? undefined : "locked",
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -70,7 +82,11 @@ export function Workspace({
             {t.badge && (
               <span
                 className={`rounded-full px-1.5 py-px text-[0.65rem] font-medium ${
-                  t.badge === "done" ? "bg-ok-soft text-ok" : "bg-accent-soft text-accent"
+                  t.badge === "done"
+                    ? "bg-ok-soft text-ok"
+                    : t.badge === "locked"
+                      ? "bg-surface-2 text-subtle"
+                      : "bg-accent-soft text-accent"
                 }`}
               >
                 {t.badge}
@@ -145,7 +161,9 @@ export function Workspace({
         </div>
       )}
 
-      {tab === "submit" && <Submit problem={problem} />}
+      {tab === "submit" && <Submit problem={problem} hasSolution={!!solution} onOpenSolution={() => go("solution")} />}
+
+      {tab === "solution" && solution && <SolutionNotes problem={problem}>{solution}</SolutionNotes>}
     </div>
   );
 }
@@ -220,7 +238,110 @@ function Hints({ slug, hints, revealed }: { slug: string; hints: string[]; revea
   );
 }
 
-function Submit({ problem }: { problem: ProblemMeta }) {
+// Solution notes are a self-honesty gate, not a secret: they unlock after you submit,
+// or early (recorded as "peeked") once every hint has been revealed.
+function SolutionNotes({ problem, children }: { problem: ProblemMeta; children: React.ReactNode }) {
+  const p = useProgress().problems[problem.slug];
+  const submitted = p?.status === "submitted";
+  const allHints = (p?.hintsRevealed ?? 0) >= problem.hints.length;
+
+  if (!submitted && !p?.solutionPeeked) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-8 text-center">
+        <Icon name="target" className="mx-auto size-6 text-subtle" />
+        <h2 className="mt-3 text-lg font-semibold">Solution notes unlock after you submit</h2>
+        <p className="mt-2 text-sm text-pretty text-muted">
+          They show what a strong solution looks like, common mistakes, the trade-offs a reviewer would probe, and a
+          grading table. Reading them first turns the exercise into reading. Build it, submit, then grade yourself.
+        </p>
+        {allHints ? (
+          <button
+            onClick={() => {
+              if (confirm("Open the solution notes before submitting? This is recorded on the problem."))
+                progress.patchProblem(problem.slug, { solutionPeeked: true });
+            }}
+            className="mt-5 text-sm text-muted underline underline-offset-2 hover:text-fg"
+          >
+            I&apos;m truly stuck. Open them anyway
+          </button>
+        ) : (
+          <p className="mt-5 text-xs text-subtle">
+            Stuck? Reveal all {problem.hints.length} hints first ({p?.hintsRevealed ?? 0} revealed so far).
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {!submitted && (
+        <p className="mb-6 max-w-[72ch] rounded-lg bg-warn-soft px-3.5 py-2.5 text-sm text-warn">
+          You opened these before submitting. Close them, build your own version, and come back to grade it.
+        </p>
+      )}
+      <div className="mb-6 max-w-[72ch] rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-muted">
+        Grade your repo against the table at the end, then fix the gaps and resubmit. Rewriting after feedback is how
+        this turns into skill.
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ReviewRequest({ problem, repoUrl }: { problem: ProblemMeta; repoUrl: string }) {
+  const [copied, setCopied] = useState(false);
+  const text = [
+    `Hi! Could you review my solution to "${problem.title}"?`,
+    ``,
+    `Repo: ${repoUrl}`,
+    `Task: ${problem.summary}`,
+    ``,
+    `What it should do:`,
+    ...problem.requirements.map((r) => `- ${r}`),
+    ``,
+    `I'd especially value blunt feedback on:`,
+    ...problem.rubric.slice(0, 4).map((r) => `- ${r}`),
+    ``,
+    `Even 15 minutes and three comments would help a lot. Thanks!`,
+  ].join("\n");
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-4">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+        <Icon name="github" className="size-4" /> Get a human review
+      </h3>
+      <p className="mb-3 text-sm text-muted">
+        Self-grading has blind spots. Send this to a senior colleague, a mentor, or a developer community&apos;s
+        code-review channel. Ask them to comment directly on a pull request if they can.
+      </p>
+      <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-code p-3 font-mono text-[0.72rem] whitespace-pre-wrap text-muted">
+        {text}
+      </pre>
+      <button
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        className="mt-3 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-2"
+      >
+        {copied ? "Copied" : "Copy review request"}
+      </button>
+    </section>
+  );
+}
+
+function Submit({
+  problem,
+  hasSolution,
+  onOpenSolution,
+}: {
+  problem: ProblemMeta;
+  hasSolution: boolean;
+  onOpenSolution: () => void;
+}) {
   const state = useProgress();
   const p = state.problems[problem.slug];
   const latest = p?.submissions.at(-1);
@@ -319,6 +440,21 @@ function Submit({ problem }: { problem: ProblemMeta }) {
             </p>
           )}
         </form>
+
+        {latest && hasSolution && (
+          <button
+            onClick={onOpenSolution}
+            className="flex w-full items-center justify-between rounded-2xl border border-accent/30 bg-accent-soft px-4 py-3 text-left text-sm"
+          >
+            <span>
+              <span className="block font-medium">Grade yourself with the solution notes</span>
+              <span className="text-muted">Strong / acceptable / needs work, dimension by dimension.</span>
+            </span>
+            <Icon name="arrowRight" className="size-4 shrink-0 text-accent" />
+          </button>
+        )}
+
+        {latest && <ReviewRequest problem={problem} repoUrl={latest.repoUrl} />}
 
         {p && p.submissions.length > 0 && (
           <Panel title="Submission history" meta={String(p.submissions.length)}>

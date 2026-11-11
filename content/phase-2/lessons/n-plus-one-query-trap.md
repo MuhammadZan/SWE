@@ -1,6 +1,6 @@
 ## Why this matters
 
-The invoice list endpoint returns 50 invoices with each customer's name and billing address. Locally it responds in 60 ms. In production, against a managed Postgres in a different availability zone, it takes 900 ms. The database dashboard shows nothing alarming: every individual query takes under 2 ms. No single query is slow. There are just 151 of them per request.
+The invoice list endpoint returns 50 invoices with each customer's name, billing address, and payment terms, each loaded lazily. Locally it responds in 60 ms. In production, against a managed Postgres in a different availability zone, it takes 900 ms. The database dashboard shows nothing alarming: every individual query takes under 2 ms. No single query is slow. There are just 151 of them per request.
 
 This is the N+1 query problem: one query to fetch a list of N items, then N more queries to fetch something related for each item. It is the most common performance bug in ORM-based applications, it is invisible in code review if you do not know to look for it, and it gets worse with every network hop between your app and your database.
 
@@ -126,6 +126,8 @@ SELECT pg_reload_conf();
 
 The most useful habit: a per-request query counter. Store a counter in `AsyncLocalStorage`, increment it on every query, and log a warning when a request exceeds a threshold (say 20). This catches N+1 regressions the day they are introduced.
 
+Increment it from code that runs in the caller's async context: a wrapped `pool.query`, or a Prisma client extension. Prisma's `$on("query")` log event is emitted from the query engine and is not guaranteed to run inside the request's `AsyncLocalStorage` context, so `getStore()` can come back `undefined` there. Note also that an extension counts Prisma *operations*; one `findMany` with `include` can run two or three SQL statements, so confirm against the SQL log when the exact number matters.
+
 ```ts
 import { AsyncLocalStorage } from "node:async_hooks";
 const reqCtx = new AsyncLocalStorage<{ queries: number; path: string }>();
@@ -138,7 +140,16 @@ app.use((req, res, next) => {
   reqCtx.run(ctx, next);
 });
 
-prisma.$on("query", () => { const c = reqCtx.getStore(); if (c) c.queries++; });
+const db = prisma.$extends({
+  query: {
+    async $allOperations({ args, query }) {
+      const c = reqCtx.getStore();
+      if (c) c.queries++;
+      return query(args);
+    },
+  },
+});
+// use `db` (not `prisma`) everywhere in request handlers
 ```
 
 ## Fix 1: a JOIN
@@ -199,7 +210,7 @@ const invoices2 = await invoiceRepo
 Check the logs after switching. ORMs implement eager loading in one of two ways:
 
 1. **A JOIN** in a single query.
-2. **A second query with `WHERE id IN (...)`**, then stitching in memory. Prisma has historically done this for many relations (newer versions can use database-level joins via `relationLoadStrategy: "join"`).
+2. **A second query with `WHERE id IN (...)`**, then stitching in memory. Prisma has historically done this for relations (since 5.8 it can use database-level joins via `relationLoadStrategy: "join"`; depending on your version this sits behind the `relationJoins` preview feature).
 
 Both are fine. Two queries is not N+1. What matters is that the query count is constant regardless of how many rows you load.
 

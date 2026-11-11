@@ -134,6 +134,10 @@ interface RefundableGateway extends PaymentGateway {
 class StripeGateway implements RefundableGateway { /* both */ }
 class BankTransferGateway implements PaymentGateway { /* charge only */ }
 
+// a type guard keeps the capability check in one place
+const isRefundable = (g: PaymentGateway): g is RefundableGateway =>
+  typeof (g as Partial<RefundableGateway>).refund === "function";
+
 async function cancelOrder(order: Order, gateway: PaymentGateway, refunds: ManualRefundQueue) {
   if (isRefundable(gateway)) await gateway.refund(order.chargeId, order.total);
   else await refunds.enqueue(order); // explicit, typed path for the manual process

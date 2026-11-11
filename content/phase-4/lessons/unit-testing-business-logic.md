@@ -4,7 +4,7 @@ You change one line in the discount function so annual plans get an extra 5% off
 
 Manual checking scales with your patience, not with your codebase. A unit test suite is a list of claims about your code that a machine re-checks in under a second, every time anything changes. For money math in a SaaS or ERP product, that is not a nice-to-have: an off-by-one-cent rounding bug multiplied across 40,000 invoices is a support incident, an accounting reconciliation, and sometimes a legal problem.
 
-This lesson covers what a "unit" actually is, how to structure tests so they stay readable, how to replace dependencies with test doubles without lying to yourself, how to test money correctly, and how to drive a feature with test-driven development (TDD).
+You have been writing Vitest tests since the Phase 1 lesson *Testing from Day One*: AAA, fakes injected through constructors, contract tests that run against both the fake and the real implementation. This lesson assumes all of that and goes deeper on the hardest unit-level target in a SaaS codebase, money logic: sharpening what a "unit" is, choosing between test-double styles deliberately, testing money exactly, attacking boundaries and hostile input, and driving a feature with test-driven development (TDD).
 
 ## What a unit is
 
@@ -37,10 +37,10 @@ For business logic, lean classicist. You care that `calculateInvoice` returns th
 
 ## Setting up Vitest
 
-Vitest runs TypeScript directly, is fast, and has a Jest-compatible API.
+You already have Vitest from Phase 1; for this phase add the coverage provider, which is a separate package (`--coverage` fails with a prompt to install it otherwise):
 
 ```bash
-npm install -D vitest
+npm install -D vitest @vitest/coverage-v8
 ```
 
 ```json
@@ -69,7 +69,7 @@ Put tests next to the code: `src/billing/discount.ts` and `src/billing/discount.
 
 ## Arrange, Act, Assert
 
-Every test has the same three phases. Making them visible is the single biggest readability win.
+A quick refresher, since you have used it since Phase 1: every test has the same three phases, and making them visible is the single biggest readability win.
 
 ```ts
 import { describe, it, expect } from "vitest";

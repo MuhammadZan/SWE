@@ -8,10 +8,10 @@ You maintain the billing module of a B2B SaaS product. Pricing works like this:
   - seats 11-50: 10% off
   - seats 51+: 20% off
 - **Annual billing** gives an extra 15% off the post-volume subtotal, and the period is 12 months.
-- An optional **coupon** in basis points (0-10,000) applies last. The total discount from annual + coupon combined may never exceed 40% of the post-volume subtotal.
+- An optional **coupon** in basis points (0-10,000) applies last, to the amount remaining after the annual discount (if any). The total discount from annual + coupon combined may never exceed 40% of the post-volume subtotal.
 - **VAT** is added on the discounted net amount, by billing country: DE 19%, FR 20%, NL 21%, US 0% (handled elsewhere). Reverse charge: if the customer has a valid EU VAT ID and the country is not the seller's country (DE), VAT is 0.
 
-Last quarter a refactor introduced a bug where 50 seats were billed entirely at the 10% tier rate. Nobody noticed for six weeks. Your job is to make that impossible to ship again.
+Last quarter a refactor introduced a bug where 50 seats were billed entirely at the 10% tier rate. Nobody noticed for six weeks. Your job is to make that impossible to ship again. You have written tests since Phase 1; the bar here is higher: exact-cent expectations derived by hand, every boundary pinned on both sides, and hostile input rejected with a specific error.
 
 ## Starting point
 
@@ -52,7 +52,7 @@ You may change the internal structure (split into helpers, add a `money.ts`) but
 2. A Vitest suite organised into three `describe` blocks:
    - **Valid calculations**: at least one test per plan, graduated tier boundaries (10, 11, 50, 51 seats), annual vs monthly, coupon stacking hitting the 40% cap, each VAT country, and reverse charge.
    - **Rounding**: cases where a fraction of a cent occurs, asserting the exact expected cent.
-   - **Bad or malicious input**: seats of 0, -5, 2.5, `NaN`, `Infinity`, `1e12`; a coupon of -1, 10,001, or a string; an unknown plan or country arriving via `JSON.parse` from an HTTP body; a `vatId` that is malformed or belongs to the seller's own country.
+   - **Bad or malicious input**: seats of 0, -5, 2.5, `NaN`, `Infinity`, `1e12`; a coupon of -1, 10,001, or a string; an unknown plan or country arriving via `JSON.parse` from an HTTP body; a `vatId` that is malformed or whose country prefix does not match the billing country (a valid DE VAT ID on a DE customer is a normal domestic sale: VAT is charged).
 3. Custom error classes (for example `InvalidQuoteInputError` with a `field` property) so callers and tests can tell validation failures apart from bugs.
 
 The outline asks for at least three tests. Treat three as the minimum count of *describe blocks*; a serious money function needs 25 or more cases, most of them table-driven with `it.each`.
@@ -82,7 +82,7 @@ If your implementation disagrees, check whether you applied the tier rate to all
 
 ## How to verify
 
-- `npx vitest run` passes; `npx vitest run --coverage` shows 100% branch coverage of `quote.ts`.
+- `npx vitest run` passes; `npx vitest run --coverage` (with `@vitest/coverage-v8` installed) shows 100% branch coverage of `quote.ts`.
 - Mutation check by hand: change the 51+ tier to 15%, change `>` to `>=` at a boundary, remove the 40% cap, swap FR and NL rates. Each change must fail at least one test with a name that explains the rule. Revert after each.
 - Run `npx tsc --noEmit` with `strict: true`.
 - Ask someone (or yourself a day later) to read only the test names. They should be able to reconstruct the pricing rules from them.

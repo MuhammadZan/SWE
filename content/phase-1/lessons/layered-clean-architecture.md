@@ -253,14 +253,23 @@ Code reviews alone won't keep this structure intact. Use tooling:
 - **TypeScript path aliases** (`@invoicing`, `@inventory`) that point only at each module's `index.ts`.
 
 ```js
-// .eslintrc excerpt
-"no-restricted-imports": ["error", {
-  "patterns": [{ "group": ["@prisma/*", "next/*", "**/infrastructure/**"],
-                 "message": "Domain/application code must not import infrastructure." }]
-}]
+// eslint.config.js (flat config, the default since ESLint 9)
+export default [
+  {
+    files: ["src/modules/*/domain/**", "src/modules/*/application/**"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@prisma/*", "next/*", "**/infrastructure/**"],
+          message: "Domain/application code must not import infrastructure.",
+        }],
+      }],
+    },
+  },
+];
 ```
 
-Apply that rule with an override that targets only `src/modules/*/domain/**` and `src/modules/*/application/**`.
+The `files` globs scope the rule to domain and application code only. (Projects still on ESLint 8 express the same thing with an `overrides` entry in `.eslintrc`.)
 
 ## How much architecture is enough?
 

@@ -1,6 +1,15 @@
 # Engineer Journal
 
-A self-paced learning app for `software_engineer_roadmap.md`: four phases (architecture, performance, system design, testing & infrastructure), each with in-depth lessons, quizzes, hands-on problems, a built-in whiteboard, and GitHub repo submissions.
+A self-paced learning app built from `software_engineer_roadmap.md`, extended to six phases:
+
+0. Engineering Foundations (networking, API design, auth, application security, Git/code review/design docs)
+1. Code Organization & Scalable Architectures
+2. Code Performance & Resource Scaling (plus an interview-patterns track)
+3. System Design & Traffic Scaling
+4. Automated Testing & Infrastructure
+5. Databases in Production (modeling, transactions, bottleneck diagnosis, scaling strategies, migrations, recovery, security, monitoring)
+
+Each phase has in-depth lessons, quizzes, hands-on problems, a built-in whiteboard, GitHub repo submissions, and solution notes that unlock after you submit.
 
 ## Run it
 
@@ -15,6 +24,8 @@ npm run dev     # http://localhost:3000
 | --- | --- |
 | Lessons (markdown) | `content/phase-N/lessons/<slug>.md` |
 | Problem briefs (markdown) | `content/phase-N/problems/<slug>.md` |
+| Solution notes (unlock after submitting) | `content/phase-N/solutions/<slug>.md` |
+| Writing standards for all content | `content/AUTHORING.md` |
 | Phase metadata, quizzes, criteria, hints | `content/phase-N/index.ts` (schema in `lib/types.ts`) |
 | Progress store (localStorage) | `lib/progress.ts` |
 | Whiteboard (Excalidraw + system-design stencils) | `components/board/` |

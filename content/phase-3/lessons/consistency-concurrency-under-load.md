@@ -60,7 +60,7 @@ async function reserveSeat(eventId: string, userId: string) {
 }
 ```
 
-Postgres locks the row for the duration of the UPDATE. Request B's UPDATE waits for A to commit, then re-evaluates `seats_left > 0` against the new value and matches zero rows. No oversell.
+The UPDATE takes a row lock that is held until the transaction commits or rolls back. Request B's UPDATE waits for A to finish, then re-evaluates `seats_left > 0` against the new value and matches zero rows. No oversell.
 
 Pair it with constraints as a safety net: `CHECK (seats_left >= 0)` and `UNIQUE (event_id, user_id)` so one user cannot book twice even if your code has a bug.
 

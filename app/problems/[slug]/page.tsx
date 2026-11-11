@@ -21,7 +21,7 @@ export default async function ProblemPage(props: PageProps<"/problems/[slug]">) 
   const { slug } = await props.params;
   const data = getProblem(slug);
   if (!data) notFound();
-  const { phase, problem, brief, prev, next } = data;
+  const { phase, problem, brief, solution, prev, next } = data;
   const related = problem.relatedLessons.map((s) => ({ slug: s, title: lessonTitle(s) }));
 
   return (
@@ -48,7 +48,7 @@ export default async function ProblemPage(props: PageProps<"/problems/[slug]">) 
         <ProblemBadge slug={slug} />
       </header>
 
-      <Workspace problem={problem} related={related}>
+      <Workspace problem={problem} related={related} solution={solution ? <Markdown>{solution}</Markdown> : null}>
         <Markdown>{brief}</Markdown>
       </Workspace>
 

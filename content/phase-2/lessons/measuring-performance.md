@@ -119,7 +119,7 @@ If your request takes 900 ms but the CPU profile shows 30 ms of JavaScript, the 
 - **Database-side tools.** `pg_stat_statements` shows which query shapes consume the most total time across all requests:
 
 ```sql
-SELECT calls, round(total_exec_time) AS total_ms, round(mean_exec_time, 2) AS mean_ms, query
+SELECT calls, round(total_exec_time) AS total_ms, round(mean_exec_time::numeric, 2) AS mean_ms, query
 FROM pg_stat_statements
 ORDER BY total_exec_time DESC
 LIMIT 10;
@@ -230,24 +230,36 @@ const decode = (s: string): Cursor => JSON.parse(Buffer.from(s, "base64url").toS
 
 async function listTransactions(tenantId: string, after?: string) {
   const c = after ? decode(after) : null;
-  const { rows } = await pool.query(
-    `SELECT id, posted_at, amount_cents, description
-       FROM transactions
-      WHERE tenant_id = $1
-        AND ($2::timestamptz IS NULL OR (posted_at, id) < ($2, $3))
-      ORDER BY posted_at DESC, id DESC
-      LIMIT 51`,
-    [tenantId, c?.postedAt ?? null, c?.id ?? null],
-  );
+  // Two plain query shapes instead of "($2 IS NULL OR ...)": an OR around the row
+  // comparison can stop it from being used as an index condition.
+  const { rows } = c
+    ? await pool.query(
+        `SELECT id, posted_at, posted_at::text AS cursor_ts, amount_cents, description
+           FROM transactions
+          WHERE tenant_id = $1 AND (posted_at, id) < ($2::timestamptz, $3::bigint)
+          ORDER BY posted_at DESC, id DESC
+          LIMIT 51`,
+        [tenantId, c.postedAt, c.id],
+      )
+    : await pool.query(
+        `SELECT id, posted_at, posted_at::text AS cursor_ts, amount_cents, description
+           FROM transactions
+          WHERE tenant_id = $1
+          ORDER BY posted_at DESC, id DESC
+          LIMIT 51`,
+        [tenantId],
+      );
   const hasMore = rows.length > 50;
   const page = rows.slice(0, 50);
   const last = page.at(-1);
   return {
     data: page,
-    nextCursor: hasMore && last ? encode({ postedAt: last.posted_at.toISOString(), id: last.id }) : null,
+    nextCursor: hasMore && last ? encode({ postedAt: last.cursor_ts, id: String(last.id) }) : null,
   };
 }
 ```
+
+Why `posted_at::text` for the cursor: Postgres `timestamptz` has microsecond precision, but a JavaScript `Date` only has milliseconds. If you build the cursor from `last.posted_at.toISOString()`, the cursor is truncated (`.123456` becomes `.123`), and rows between the two values are silently skipped on the next page. Keep the database's own text representation in the cursor, or store timestamps as `timestamptz(3)`.
 
 (Fetching `LIMIT 51` tells you whether another page exists without a separate count query.)
 

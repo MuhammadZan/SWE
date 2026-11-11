@@ -51,7 +51,8 @@ app.post("/api/exports", async (req, res) => {
   const job = await exportQueue.add(
     "ledger-export",
     { tenantId, userId, year },
-    { jobId: `ledger:${tenantId}:${year}:${req.body.requestId}` }, // dedupe key
+    // dedupe key; BullMQ rejects custom IDs containing ":" (and purely numeric IDs), so use "-"
+    { jobId: `ledger-${tenantId}-${year}-${req.body.requestId}` },
   );
 
   res.status(202)
@@ -131,7 +132,7 @@ Stripe, most payment providers and many email APIs accept an `Idempotency-Key` h
 
 ### 4. Dedupe at enqueue
 
-BullMQ ignores `add` calls whose `jobId` already exists. Using a deterministic job ID (`ledger:${tenantId}:${year}`) stops the double-click problem at the door.
+BullMQ ignores `add` calls whose `jobId` already exists. Using a deterministic job ID (`ledger-${tenantId}-${year}`) stops the double-click problem at the door. The protection lasts only while that job is still stored: once `removeOnComplete` or `removeOnFail` deletes it, the same ID can be enqueued again. Recent BullMQ versions also offer a `deduplication` option with its own TTL; either way, the handler must still be idempotent.
 
 ## Retries and backoff
 
@@ -219,7 +220,7 @@ const worker = new Worker<PdfJob>(
   {
     connection,
     concurrency: 4,                       // jobs in parallel per process
-    limiter: { max: 50, duration: 1000 }, // at most 50 jobs/s across this worker
+    limiter: { max: 50, duration: 1000 }, // at most 50 jobs/s for the whole queue (BullMQ's limiter is global across all workers)
   },
 );
 

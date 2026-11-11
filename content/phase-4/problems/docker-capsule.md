@@ -12,7 +12,7 @@ Use an existing Node/TypeScript backend with a Postgres dependency. If you do no
 - `GET /readyz` running `select 1` against Postgres, 503 on failure
 - `GET /invoices` returning rows from an `invoices` table
 - a `build` script compiling TypeScript to `dist/`
-- a migration script (`npm run db:migrate`)
+- a migration script (`npm run db:migrate`, compiled to `dist/migrate.js` so the runtime image can run it with plain `node`)
 
 A typical unoptimised starting Dockerfile you should improve on:
 
@@ -40,7 +40,7 @@ Build it once and write down the image size and the time for a rebuild after cha
 
 ## Constraints
 
-- Base image pinned to a specific major version (for example `node:20-alpine`), never `latest`.
+- Base image pinned to a specific major version (for example `node:24-alpine`), never `latest`.
 - No secrets in the image: no `.env` copied, no `ENV` or `ARG` containing credentials. Verify with `docker history --no-trunc`.
 - Final image under 250 MB for a typical API (state yours in the README with the before/after numbers).
 - Changing only a `.ts` file must not re-run the dependency install layer.
@@ -54,6 +54,9 @@ docker run -d --name capsule-db --network capsule \
   -e POSTGRES_USER=app -e POSTGRES_PASSWORD=app -e POSTGRES_DB=app postgres:16-alpine
 
 docker build -t invoice-api:local .
+
+# wait until Postgres accepts connections before migrating
+until docker exec capsule-db pg_isready -h localhost -U app -d app; do sleep 1; done
 
 docker run --rm --network capsule \
   -e DATABASE_URL=postgres://app:app@capsule-db:5432/app invoice-api:local \

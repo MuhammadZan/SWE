@@ -187,8 +187,8 @@ export const phase: PhaseMeta = {
       ],
       resources: [
         {
-          label: "Redis docs: Client-side caching and caching patterns",
-          url: "https://redis.io/docs/latest/develop/clients/client-side-caching/",
+          label: "Redis documentation",
+          url: "https://redis.io/docs/latest/",
           kind: "docs",
         },
         {
@@ -285,8 +285,8 @@ export const phase: PhaseMeta = {
           kind: "docs",
         },
         {
-          label: "ByteByteGo: Message queues explained",
-          url: "https://blog.bytebytego.com/p/why-do-we-need-a-message-queue",
+          label: "ByteByteGo newsletter (message queue articles)",
+          url: "https://blog.bytebytego.com",
           kind: "web",
         },
         {
@@ -488,8 +488,8 @@ export const phase: PhaseMeta = {
       ],
       resources: [
         {
-          label: "Redis docs: Distributed locks",
-          url: "https://redis.io/docs/latest/develop/use/patterns/distributed-locks/",
+          label: "Redis documentation (see the distributed locks pattern)",
+          url: "https://redis.io/docs/latest/",
           kind: "docs",
         },
         {
@@ -625,12 +625,13 @@ export const phase: PhaseMeta = {
         "If Redis is stopped or times out, the function logs the error and returns correct data from the database without throwing.",
         "A benchmark prints cold and warm p50/p95 for 100 calls, and the hit ratio computed from Redis INFO stats.",
         "A stampede test shows how many times the loader ran for 200 concurrent misses, before and after adding single-flight.",
+        "Automated tests (npm test, against a real Redis) cover hit, miss, TTL expiry, invalidation, the Redis-down fallback and single-flight calling the loader exactly once for 200 concurrent misses.",
       ],
       hints: [
         "Start with the simplest version: GET, and on null, load and SET. Log HIT or MISS with a timing for each call before optimizing anything.",
         "ioredis supports redis.set(key, value, 'EX', 60) so the value and TTL are written atomically; avoid a separate EXPIRE call that could be skipped if the process dies.",
         "For Redis failure handling, set a short commandTimeout and maxRetriesPerRequest on the client, and wrap cache calls in try/catch that falls through to the loader.",
-        "For single-flight, try redis.set(lockKey, '1', 'PX', 5000, 'NX'); the request that gets 'OK' loads and populates the cache, others poll the cache every 50 ms for a short time before falling back to loading.",
+        "For single-flight, try redis.set(lockKey, token, 'PX', 5000, 'NX') with a random token per request; the request that gets 'OK' loads and populates the cache, others poll the cache every 50 ms for a short time before falling back to loading. Release the lock with a Lua compare-and-delete, never a plain DEL, so a slow loader cannot delete someone else's lock.",
       ],
       rubric: [
         "Could two tenants ever receive each other's cached data with my key scheme?",
@@ -650,6 +651,7 @@ export const phase: PhaseMeta = {
         "Benchmark and stampede scripts runnable with one npm script each.",
         "README with a results table: cold vs warm p50/p95, hit ratio, loader count before and after single-flight.",
         "A short note on the Redis-down behavior and how you tested it.",
+        "A test suite runnable with npm test covering hit/miss, TTL, invalidation, Redis-down fallback and single-flight.",
       ],
       relatedLessons: ["caching-layers", "load-testing-bottlenecks"],
     },
@@ -668,10 +670,10 @@ export const phase: PhaseMeta = {
         "The API process never imports or calls sharp; all processing runs in a separate worker process.",
         "Job payloads contain only IDs and storage keys and are under 1 KB.",
         "GET /api/images/:id returns queued, processing, ready or failed with progress, and enforces tenant ownership.",
-        "Jobs retry at least 4 times with exponential backoff; unsupported or corrupt files fail permanently after one attempt.",
+        "Jobs get at least 4 attempts with exponential backoff; unsupported or corrupt files fail permanently after one attempt.",
         "Killing the worker with kill -9 mid-batch and restarting it results in every image reaching ready with exactly three variants and no duplicates.",
-        "A script lists failed (dead-lettered) jobs with their error and can replay a single job.",
-        "The worker handles SIGTERM by finishing in-flight jobs before exiting.",
+        "A script lists failed (dead-lettered) jobs with their error and can replay a single job, and the worker handles SIGTERM by finishing in-flight jobs before exiting.",
+        "Automated tests (npm test) prove the handler is idempotent (two runs leave three variants and one ready record), invalid files fail without retries, transient storage errors are retried, and the status endpoint rejects another tenant's image.",
       ],
       hints: [
         "Sketch the diagram first. Decide what the API does (validate, store, record, enqueue, respond) and what it must not do (anything CPU-heavy).",
@@ -699,6 +701,7 @@ export const phase: PhaseMeta = {
         "Exported architecture diagram (PNG or SVG) of the async flow.",
         "Load script uploading 100 images in parallel and printing p95 and drain time.",
         "README documenting the retry policy, idempotency strategy, concurrency choice and the kill -9 test result.",
+        "A test suite runnable with npm test covering handler idempotency, permanent vs transient failures and tenant ownership on the status endpoint.",
       ],
       relatedLessons: ["message-queues-background-workers", "system-design-framework"],
     },
@@ -821,10 +824,10 @@ export const phase: PhaseMeta = {
         "GET /api/lots/:id serves from Redis via cache-aside with TTLs and stampede protection, falling back to Postgres.",
         "POST /api/lots/:id/bids accepts or rejects atomically and returns 409 for invalid or outbid bids; the chosen concurrency approach is justified in the README.",
         "Notifications, audit enrichment and analytics run in BullMQ workers with retries, idempotent handlers and a dead-letter path; no external calls happen in the bid request.",
-        "At least two stateless API instances run behind a load balancer, with pool sizes documented and the total connection count shown to fit the database limit.",
-        "Per-user bid rate limiting returns 429 with a Retry-After header.",
+        "At least two stateless API instances run behind a load balancer with pool sizes documented and the total connection count shown to fit the database limit, and per-user bid rate limiting returns 429 with a Retry-After header.",
         "A k6 script with arrival-rate executors models the 80/20 read/write mix and hot-lot skew, and passes thresholds of p95 under 200 ms and errors under 1% for at least 5 minutes at the documented target rate.",
-        "A correctness verifier run after each load test reports zero violations, including after Redis is flushed mid-test.",
+        "A correctness verifier run after each load test reports zero violations (accepted bids strictly increasing per lot, none after the end time, leader equals highest accepted bid), including after Redis is flushed mid-test.",
+        "Automated concurrency tests (npm test, real Postgres and Redis) fire at least 200 simultaneous bids at one lot and assert no incorrect outcome, still pass after Redis is flushed, and prove side-effect jobs are idempotent.",
         "RESULTS.md records at least three iterations of measure, identify bottleneck, change one thing, re-measure, with RPS, p50, p95, p99 and error rate.",
       ],
       hints: [
@@ -835,7 +838,7 @@ export const phase: PhaseMeta = {
         "When the numbers stall, watch event loop lag, pool wait time, pg_stat_activity wait events and Redis CPU during the run. Change one thing, rerun the identical script and log the result.",
       ],
       rubric: [
-        "Would my correctness verifier catch an oversold seat or a lower bid winning, and did it pass after every run?",
+        "Would my correctness verifier catch a bid accepted without beating the current price, a bid accepted after close or a leader that is not the highest bid (or an oversold slot, if I built reservations), and did it pass after every run?",
         "Are my load test numbers produced with an open model, realistic skew and a load generator that was not itself saturated?",
         "Can I name the first bottleneck I hit, the evidence for it and the change that moved it?",
         "If Redis is flushed or an API instance dies mid-test, does the system recover without incorrect outcomes?",
@@ -849,7 +852,7 @@ export const phase: PhaseMeta = {
         "Add anti-sniping: extend an auction's end time when a bid arrives in the final 30 seconds, and prove it stays correct under load.",
       ],
       repoChecklist: [
-        "Source for the API, workers, Lua scripts (if any) and correctness verifier in TypeScript.",
+        "Source for the API, workers, Lua scripts (if any) and correctness verifier in TypeScript, plus a test suite runnable with npm test including the concurrent-bid tests.",
         "docker-compose.yml bringing up the load balancer, two or more API instances, workers, Redis, Postgres and the pooler.",
         "k6 (or Artillery) scripts with thresholds and instructions for running them.",
         "Before and after architecture diagrams exported as PNG or SVG.",
@@ -879,7 +882,7 @@ export const phase: PhaseMeta = {
     },
     {
       label: "Clément Mihailescu (YouTube)",
-      url: "https://www.youtube.com/c/ClementMihailescu",
+      url: "https://www.youtube.com/@clem",
       kind: "video",
     },
     {

@@ -1,6 +1,6 @@
 ## Why this matters
 
-You have tests now. The problem is that they only run when someone remembers to run them. A teammate merges a pull request on Friday afternoon, skipped the tests "because it was a one-line change", and the tax calculation is broken for the weekend. Or the tests pass on their machine because they have a stale local database, and fail for everyone else.
+You have been writing tests since Phase 1. The problem is that they only run when someone remembers to run them. A teammate merges a pull request on Friday afternoon, skipped the tests "because it was a one-line change", and the tax calculation is broken for the weekend. Or the tests pass on their machine because they have a stale local database, and fail for everyone else.
 
 Continuous integration (CI) makes verification non-optional and identical for everyone. Every push and every pull request triggers the same checks in a clean environment, and the merge button stays disabled until they pass. The goal is simple: **`main` is always releasable.**
 
@@ -28,7 +28,7 @@ Workflows are YAML files in `.github/workflows/`. The hierarchy:
 - **Workflow**: one YAML file, triggered by one or more events.
 - **Job**: a set of steps that run on one runner (a fresh VM, for example `ubuntu-latest`). Jobs run in parallel unless you declare `needs`.
 - **Step**: either a shell command (`run:`) or a reusable action (`uses:`). Steps in a job share the filesystem.
-- **Action**: a packaged step, such as `actions/checkout@v4` or `actions/setup-node@v4`.
+- **Action**: a packaged step, such as `actions/checkout@v7` or `actions/setup-node@v7`. Major versions move: GitHub moved the action runtime from Node 20 to Node 24 in 2025-2026, so older `@v4`-era tags in blog posts are deprecated. Check each action's releases page and let Dependabot (`package-ecosystem: github-actions`) keep them current.
 
 Jobs do not share files. If job B needs output from job A, pass it via artifacts (`actions/upload-artifact` / `download-artifact`), job outputs, or a registry.
 
@@ -57,8 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -72,8 +72,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -113,7 +113,7 @@ Without caching, every job downloads every npm package. `actions/setup-node` wit
 For other caches, use `actions/cache` directly:
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@v6
   with:
     path: .eslintcache
     key: eslint-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.*') }}
@@ -135,11 +135,11 @@ A matrix runs the same job across combinations. Useful when you support multiple
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        node: [22, 24]
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -175,8 +175,8 @@ Integration tests need Postgres. GitHub Actions can start containers alongside a
     env:
       DATABASE_URL: postgres://app:app@localhost:5432/app_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -245,7 +245,7 @@ A good pipeline fails fast and cheap:
     needs: [quality, unit, integration]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t billing-api:ci .
 ```
 
@@ -264,7 +264,7 @@ description: Install Node from .nvmrc and project dependencies
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
         cache: npm
@@ -273,7 +273,7 @@ runs:
 ```
 
 ```yaml
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: npm run lint
 ```

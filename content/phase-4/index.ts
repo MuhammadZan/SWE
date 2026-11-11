@@ -356,8 +356,8 @@ export const phase: PhaseMeta = {
       ],
       resources: [
         { label: "GitHub Actions documentation", url: "https://docs.github.com/actions", kind: "docs" },
-        { label: "GitHub Docs: Creating PostgreSQL service containers", url: "https://docs.github.com/en/actions/use-cases-and-examples/using-containerized-services/creating-postgresql-service-containers", kind: "docs" },
-        { label: "GitHub Docs: Security hardening for GitHub Actions", url: "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions", kind: "docs" },
+        { label: "GitHub Docs: Creating PostgreSQL service containers", url: "https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers", kind: "docs" },
+        { label: "GitHub Docs: Secure use reference for GitHub Actions", url: "https://docs.github.com/en/actions/reference/security/secure-use", kind: "docs" },
         { label: "Martin Fowler: Continuous Integration", url: "https://martinfowler.com/articles/continuousIntegration.html", kind: "web" },
       ],
     },
@@ -443,8 +443,8 @@ export const phase: PhaseMeta = {
         },
       ],
       resources: [
-        { label: "GitHub Docs: Publishing Docker images", url: "https://docs.github.com/en/actions/use-cases-and-examples/publishing-packages/publishing-docker-images", kind: "docs" },
-        { label: "GitHub Docs: Managing environments for deployment", url: "https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment", kind: "docs" },
+        { label: "GitHub Docs: Publishing Docker images", url: "https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images", kind: "docs" },
+        { label: "GitHub Docs: Managing environments for deployment", url: "https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments", kind: "docs" },
         { label: "Martin Fowler: Blue Green Deployment", url: "https://martinfowler.com/bliki/BlueGreenDeployment.html", kind: "web" },
         { label: "Martin Fowler: Parallel Change (expand/contract)", url: "https://martinfowler.com/bliki/ParallelChange.html", kind: "web" },
       ],

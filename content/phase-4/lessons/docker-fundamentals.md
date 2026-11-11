@@ -1,6 +1,6 @@
 ## Why this matters
 
-The invoice PDF service works on your laptop. On the server it crashes because the server has Node 18 and you used a Node 20 API, or because `sharp` was compiled for macOS ARM and the server is Linux x86, or because someone installed a different `libssl` last month. Every deploy is an archaeology dig through the state of one specific machine.
+The invoice PDF service works on your laptop. On the server it crashes because the server has Node 20 and you used a Node 22 API, or because `sharp` was compiled for macOS ARM and the server is Linux x86, or because someone installed a different `libssl` last month. Every deploy is an archaeology dig through the state of one specific machine.
 
 Docker replaces "the machine as configured by hand" with an **image**: a frozen, versioned filesystem containing the exact OS libraries, runtime, dependencies and your built code. The same image runs on your laptop, in CI, on staging and in production. If it passed tests in CI, the bytes that go to production are the bytes that were tested.
 
@@ -43,7 +43,7 @@ Each instruction in a Dockerfile (`FROM`, `COPY`, `RUN`, ...) produces a layer. 
 This is the naive Dockerfile almost everyone writes first:
 
 ```dockerfile
-FROM node:20
+FROM node:24
 WORKDIR /app
 COPY . .
 RUN npm install
@@ -51,12 +51,12 @@ RUN npm run build
 CMD ["npm", "start"]
 ```
 
-Problems: any source change invalidates `COPY . .`, so `npm install` re-runs on every build (minutes). It ships dev dependencies, the TypeScript source, possibly your `.env`, runs as root, and the `node:20` image is around 1 GB.
+Problems: any source change invalidates `COPY . .`, so `npm install` re-runs on every build (minutes). It ships dev dependencies, the TypeScript source, possibly your `.env`, runs as root, and the `node:24` image is around 1 GB.
 
 Order instructions from least to most frequently changing:
 
 ```
-  FROM node:20-alpine            <- changes rarely
+  FROM node:24-alpine            <- changes rarely
   COPY package*.json ./          <- changes when deps change
   RUN npm ci                     <- cached unless lockfile changed
   COPY . .                       <- changes every commit
@@ -73,13 +73,13 @@ A multi-stage build uses one stage with full tooling to build, then copies only 
 # syntax=docker/dockerfile:1
 
 ############ deps: production dependencies only ############
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 ############ build: full deps + compile TypeScript ############
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -88,7 +88,7 @@ COPY src ./src
 RUN npm run build
 
 ############ runtime: minimal, non-root ############
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -110,16 +110,16 @@ What each decision buys you:
 
 | Decision | Benefit |
 |---|---|
-| `node:20-alpine` instead of `node:20` | Image drops from about 1 GB to around 150-200 MB; smaller attack surface |
-| Pin the major version (`20`), or a digest for full reproducibility | No surprise runtime upgrade |
+| `node:24-alpine` instead of `node:24` | Image drops from about 1 GB to around 150-200 MB; smaller attack surface |
+| Pin the major version (`24`), or a digest for full reproducibility | No surprise runtime upgrade |
 | `npm ci` instead of `npm install` | Installs exactly the lockfile; fails if it is out of sync |
 | Separate `deps` stage with `--omit=dev` | Runtime has no TypeScript, Vitest, ESLint |
-| `CMD ["node", ...]` exec form, not `npm start` | Node is PID 1 and receives SIGTERM directly for graceful shutdown |
+| `CMD ["node", ...]` exec form, not `npm start` | Node is PID 1 and receives SIGTERM directly for graceful shutdown (see the PID 1 note below) |
 | `USER node` | A compromise of the app does not give root inside the container |
 
-Native modules (`sharp`, `bcrypt`) compile against the libc of the stage they are installed in. Because `deps` and `runtime` both use `node:20-alpine`, the binaries match. If you mix Alpine (musl) and Debian (glibc) stages, you get crashes at runtime.
+Native modules (`sharp`, `bcrypt`) compile against the libc of the stage they are installed in. Because `deps` and `runtime` both use `node:24-alpine`, the binaries match. If you mix Alpine (musl) and Debian (glibc) stages, you get crashes at runtime.
 
-For even smaller images, `gcr.io/distroless/nodejs20-debian12` contains only Node and no shell. That is more secure but you lose `wget` for healthchecks and `sh` for debugging, so start with Alpine or `node:20-slim`.
+For even smaller images, Google's distroless Node images (`gcr.io/distroless/nodejs<major>-debian12`, matching your Node major) contain only Node and no shell. That is more secure but you lose `wget` for healthchecks and `sh` for debugging, so start with Alpine or `node:24-slim`.
 
 ## .dockerignore
 
@@ -210,7 +210,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 ```
 
-Orchestrators send SIGTERM, wait a grace period, then SIGKILL. If your app ignores SIGTERM (common when started via `npm start` or a shell script that does not forward signals), every deploy kills in-flight requests, including half-written invoice transactions.
+Orchestrators send SIGTERM, wait a grace period, then SIGKILL.
+
+A PID 1 subtlety: the Linux kernel does not apply default signal actions to PID 1, so a Node process running as PID 1 *without* a SIGTERM handler simply ignores SIGTERM and gets SIGKILLed after the grace period. Exec-form `CMD` is necessary but not sufficient; you also need the handler above. If you cannot add one (or you spawn child processes), run with `docker run --init` (or compose `init: true`) so a tiny init process sits at PID 1, forwards signals and reaps zombies. If your app ignores SIGTERM (common when started via `npm start` or a shell script that does not forward signals), every deploy kills in-flight requests, including half-written invoice transactions.
 
 ## docker compose for local development
 

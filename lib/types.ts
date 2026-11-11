@@ -1,4 +1,4 @@
-// Shared content schema. Phase content lives in /content/phase-N/.
+// Shared content schema. Phase content lives in /content/phase-N/ (see content/AUTHORING.md).
 // Long-form bodies are markdown files; everything else is typed metadata.
 
 export type Resource = {
@@ -42,7 +42,7 @@ export type ProblemMeta = {
 };
 
 export type PhaseMeta = {
-  id: number; // 1-4
+  id: number; // 0-5, course order follows lib/content.ts
   slug: string; // e.g. "architecture"
   title: string;
   tagline: string; // the short parenthetical from the roadmap

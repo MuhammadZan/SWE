@@ -44,6 +44,10 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Trend, Counter } from "k6/metrics";
 
+// By default k6 counts every 4xx as a failed request, so 409 "outbid" responses would
+// push http_req_failed over 1%. Declare 409 an expected status for this test.
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 299 }, 409));
+
 const bidLatency = new Trend("bid_latency", true);
 const rejectedBids = new Counter("rejected_bids");
 
@@ -105,7 +109,7 @@ Things to notice:
 
 - **Thresholds** turn the test into pass/fail, so you can run it in CI.
 - **Realistic data:** random auction IDs spread load across keys. Hitting the same ID every time tests your cache, not your system. Hitting only random IDs tests your cache misses. Real traffic is skewed: a few hot items get most traffic. Model that if it matters.
-- **Business errors are not system errors.** A 409 "outbid" is correct behavior. Separate it from 5xx.
+- **Business errors are not system errors.** A 409 "outbid" is correct behavior. Separate it from 5xx: that is what the `setResponseCallback` line does, because `http_req_failed` otherwise treats any status of 400 or above as a failure.
 
 ## Artillery
 
@@ -115,6 +119,8 @@ Artillery uses YAML scenarios and is popular for multi-step user flows.
 # load/checkout.yml  -- run with: npx artillery run load/checkout.yml
 config:
   target: "http://localhost:3000"
+  plugins:
+    ensure: {}
   phases:
     - duration: 60
       arrivalRate: 50
